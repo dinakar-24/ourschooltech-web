@@ -1,5 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
-import { enqueueJob } from '@/lib/job-queue';
+import { api } from '@/lib/api';
 
 interface SendNotificationParams {
   userIds: string[];
@@ -11,8 +10,26 @@ interface SendNotificationParams {
 }
 
 /**
- * Send notifications via the background job queue.
- * Falls back to direct edge function call if enqueue fails.
+ * Send in-app notifications via POST /api/notifications.
+ *
+ * Migrated from the Supabase job queue. The queue is gone rather than ported:
+ * `process-jobs` was never scheduled (no cron.schedule anywhere in the repo),
+ * so enqueued jobs sat unprocessed forever and the only path that ever ran was
+ * the "enqueue failed" fallback. Sending is now a direct, synchronous call.
+ *
+ * Signature is unchanged so the existing call sites need no edits.
+ *
+ * ⚠️ Recipients must be **Express** User ids. The remaining callers
+ * (useAttendance, useAnnouncements, useHomework, useFees, useExams,
+ * SendReminderDialog) still derive ids from Supabase `profiles`, which are
+ * different ids — the backend rejects those with a 400 / UNKNOWN_RECIPIENTS
+ * rather than failing on a foreign key. Each call site starts working once its
+ * own hook migrates.
+ *
+ * Web Push is not sent; this is in-app only. See the plan for why.
+ *
+ * Fire-and-forget — never throws, so a notification failure can't roll back
+ * the action that triggered it.
  */
 export async function sendNotification({
   userIds,
@@ -24,49 +41,24 @@ export async function sendNotification({
 }: SendNotificationParams) {
   if (!userIds.length) return;
 
-  // For small batches (≤5 users), use the job queue
-  // For larger batches, use bulk notification job
-  const jobType = userIds.length > 5 ? 'send_bulk_notifications' : 'send_notification';
-
-  const jobId = await enqueueJob({
-    type: jobType as any,
-    payload: {
-      user_ids: userIds,
+  try {
+    await api.post('/notifications', {
+      userIds,
       title,
       body,
       type,
-      reference_id: referenceId || null,
-      school_id: schoolId || null,
-      ...(jobType === 'send_bulk_notifications' ? {
-        notifications: userIds.map(uid => ({
-          user_id: uid,
-          title,
-          body,
-          type,
-          reference_id: referenceId || null,
-          school_id: schoolId || null,
-        })),
-      } : {}),
-    },
-    schoolId,
-    priority: 1, // notifications are higher priority
-  });
-
-  // Fallback: if job enqueue fails, call edge function directly
-  if (!jobId) {
-    try {
-      await supabase.functions.invoke('send-push-notification', {
-        body: {
-          user_ids: userIds,
-          title,
-          body,
-          type,
-          reference_id: referenceId || null,
-          school_id: schoolId || null,
-        },
-      });
-    } catch (err) {
-      console.error('Notification fallback failed:', err);
-    }
+      referenceId: referenceId || null,
+      schoolId: schoolId || null,
+    });
+  } catch (err: any) {
+    // Logged, not surfaced: the caller's primary action (marking attendance,
+    // publishing homework) has already succeeded by this point.
+    console.error(
+      'sendNotification failed:',
+      err?.response?.data?.error || err?.message,
+      err?.response?.data?.code === 'UNKNOWN_RECIPIENTS'
+        ? '— recipient ids are not Express User ids; the calling hook is still on Supabase'
+        : '',
+    );
   }
 }

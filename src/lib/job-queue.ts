@@ -2,17 +2,21 @@
  * Client-side job queue utility.
  * Enqueues jobs into the `jobs` table for background processing.
  *
- * ⚠️ NOT MIGRATED — BLOCKED. Highest-impact gap in the migration.
+ * ⚠️ DEAD CODE — safe to delete. Zero importers as of the notifications
+ * migration; `send-notification.ts` was its only consumer and now calls
+ * POST /api/notifications directly.
  *
- * Needs: a `Job` Prisma model + POST /api/jobs  (neither exists)
- *   — or a direct notification endpoint, if the queue indirection isn't wanted.
+ * Not ported to Express on purpose. The queue never actually ran: `pg_cron` is
+ * enabled in the Supabase migrations but there is no `cron.schedule` call
+ * anywhere in the repo, and nothing else invokes the `process-jobs` function —
+ * so enqueued jobs sat unprocessed indefinitely. Its other job types
+ * (generate_report, bulk_import, cleanup) are `console.log` stubs.
  *
- * This is the only consumer of lib/send-notification.ts, which in turn backs
- * useAttendance, useAnnouncements, useHomework, useFees, useExams and
- * SendReminderDialog. With no Supabase session the insert below is rejected
- * and swallowed by the catch, so **every notification the app tries to send
- * is currently dropped silently** — attendance alerts, fee reminders,
- * homework and announcement pushes.
+ * If a real queue is needed later, design it fresh rather than reviving this.
+ *
+ * Related: super-admin SystemHealthPage still reads the `jobs` table and
+ * `get_job_queue_stats` from Supabase to render queue dashboards — those
+ * panels describe a queue that was never processing anything.
  */
 
 import { supabase } from '@/integrations/supabase/client';

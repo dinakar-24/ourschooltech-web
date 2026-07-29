@@ -1,7 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffect } from 'react';
+
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from Supabase to GET/PATCH /api/notifications.
+//
+// The exported `Notification` shape and the ['notifications', user.id] query
+// key are unchanged, so NotificationsPage and the bell need no edits — the
+// snake_case field names below are mapped from the API's camelCase.
+//
+// The Supabase Realtime subscription this used for live inbox updates was
+// REMOVED, not ported: Express has no `postgres_changes` equivalent, and with
+// no Supabase session the listener could never fire again. Replaced with a
+// 60s poll. Revisit with SSE/WebSockets if the latency becomes a problem.
+// ─────────────────────────────────────────────────────────────────────────
 
 export interface Notification {
   id: string;
@@ -15,35 +27,57 @@ export interface Notification {
   created_at: string;
 }
 
+/** Raw row from GET /api/notifications */
+interface RawNotification {
+  id: string;
+  userId: string;
+  schoolId: string | null;
+  title: string;
+  body: string;
+  type: string;
+  referenceId: string | null;
+  isRead: boolean;
+  createdAt: string;
+}
+
+function mapNotification(raw: RawNotification): Notification {
+  return {
+    id: raw.id,
+    user_id: raw.userId,
+    school_id: raw.schoolId,
+    title: raw.title,
+    body: raw.body,
+    type: raw.type,
+    reference_id: raw.referenceId,
+    is_read: raw.isRead,
+    created_at: raw.createdAt,
+  };
+}
+
+const POLL_INTERVAL_MS = 60_000;
+
 export function useNotifications() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const { data: notifications = [], isLoading } = useQuery({
     queryKey: ['notifications', user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('notifications')
-        .select('id, user_id, school_id, title, body, type, reference_id, is_read, created_at')
-        .eq('user_id', user!.id)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      return data as Notification[];
+    queryFn: async (): Promise<Notification[]> => {
+      const { data } = await api.get('/notifications');
+      return (data.notifications as RawNotification[]).map(mapNotification);
     },
     enabled: !!user?.id,
     staleTime: 30_000,
+    // Stands in for the removed Realtime subscription.
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
   });
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const markAsRead = useMutation({
     mutationFn: async (notificationId: string) => {
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notificationId);
-      if (error) throw error;
+      await api.patch(`/notifications/${notificationId}/read`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications', user?.id] });
@@ -53,12 +87,7 @@ export function useNotifications() {
   const markAllRead = useMutation({
     mutationFn: async () => {
       if (!user?.id) throw new Error('No user');
-      const { error } = await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', user.id)
-        .eq('is_read', false);
-      if (error) throw error;
+      await api.patch('/notifications/read-all');
     },
     onMutate: async () => {
       await queryClient.cancelQueries({ queryKey: ['notifications', user?.id] });
@@ -77,33 +106,6 @@ export function useNotifications() {
       queryClient.invalidateQueries({ queryKey: ['notifications', user?.id] });
     },
   });
-
-  // Realtime subscription for new notifications — append to cache instead of refetching
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const channel = supabase
-      .channel(`user-notifications-${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`,
-        },
-        (payload) => {
-          queryClient.setQueryData<Notification[]>(['notifications', user.id], (old) =>
-            [payload.new as Notification, ...(old || [])].slice(0, 50)
-          );
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user?.id, queryClient]);
 
   return {
     notifications,
