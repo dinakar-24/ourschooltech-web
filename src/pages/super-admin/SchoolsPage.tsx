@@ -16,7 +16,12 @@ import { SchoolCard } from '@/components/super-admin/schools/SchoolCard';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
+// supabase is still needed for handlePwaSettings below: the PWA branding
+// fields it reads (secondary_color, app_display_name, splash_screen_image_url)
+// have no columns on the Prisma School model, so that dialog can't migrate
+// until a schema change adds them.
 import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -127,19 +132,19 @@ export default function SchoolsPage() {
 
     setIsVerifyingToggle(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) {
-        toast.error('Unable to verify identity');
-        return;
-      }
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: togglePassword,
-      });
-
-      if (error) {
-        toast.error('Incorrect password. Please try again.');
+      // Re-confirm identity via Express. The old supabase.auth
+      // .signInWithPassword re-auth always errors now that auth moved off
+      // Supabase, which made this gate fail closed and blocked the toggle
+      // entirely. verify-password checks the caller's own hash and issues no
+      // tokens.
+      try {
+        await api.post('/auth/verify-password', { password: togglePassword });
+      } catch (err: any) {
+        toast.error(
+          err?.response?.status === 401
+            ? 'Incorrect password. Please try again.'
+            : err?.response?.data?.error || 'Unable to verify identity'
+        );
         return;
       }
 

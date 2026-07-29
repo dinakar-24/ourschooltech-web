@@ -7,7 +7,7 @@ import { Search, ShieldAlert, Mail, Users } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { UserActionsMenu } from '@/components/super-admin/UserActionsMenu';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
 
@@ -30,36 +30,31 @@ export default function PlatformUsersPage() {
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
-      let query = supabase
-        .from('profiles')
-        .select('id, email, full_name, avatar_url')
-        .is('school_id', null);
-
-      if (debouncedSearch) {
-        query = query.or(`full_name.ilike.%${debouncedSearch}%,email.ilike.%${debouncedSearch}%`);
-      }
-
-      const { data: profiles, error } = await query.order('full_name');
-      if (error) throw error;
-
-      const userIds = (profiles || []).map(p => p.id);
-      const { data: roles } = userIds.length > 0
-        ? await supabase.from('user_roles').select('user_id, role').in('user_id', userIds)
-        : { data: [] };
-
-      const rolesMap = new Map<string, string[]>();
-      (roles || []).forEach(r => {
-        const existing = rolesMap.get(r.user_id) || [];
-        existing.push(r.role);
-        rolesMap.set(r.user_id, existing);
+      // `platformOnly` is the Express equivalent of the old
+      // `.is('school_id', null)` filter — users not attached to any school.
+      // Roles arrive with each row, so the second user_roles query is gone.
+      // Note the list is now ordered by email rather than name; there is no
+      // single sortable name column across the four profile tables.
+      const { data } = await api.get('/superadmin/users', {
+        params: {
+          platformOnly: true,
+          limit: 200,
+          search: debouncedSearch || undefined,
+        },
       });
 
-      setUsers((profiles || []).map(p => ({
-        ...p,
-        roles: rolesMap.get(p.id) || [],
+      setUsers((data.users as Array<{
+        id: string; email: string; fullName: string;
+        avatarUrl: string | null; roles: string[];
+      }>).map(u => ({
+        id: u.id,
+        email: u.email,
+        full_name: u.fullName,
+        avatar_url: u.avatarUrl,
+        roles: u.roles ?? [],
       })));
-    } catch {
-      toast.error('Failed to load platform users');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || 'Failed to load platform users');
     } finally {
       setLoading(false);
     }

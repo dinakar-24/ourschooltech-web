@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface DeleteSchoolDialogProps {
@@ -34,20 +34,17 @@ export function DeleteSchoolDialog({ open, onOpenChange, schoolName, onConfirm }
 
     setIsVerifying(true);
     try {
-      // Re-authenticate super admin by signing in with current email + password
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) {
-        toast.error('Unable to verify identity');
-        return;
-      }
-
-      const { error } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password,
-      });
-
-      if (error) {
-        toast.error('Incorrect password. Please try again.');
+      // Re-confirm the super admin's own password via Express. The previous
+      // supabase.auth.signInWithPassword re-auth always errors now, which made
+      // this gate fail closed and blocked school deletion entirely.
+      try {
+        await api.post('/auth/verify-password', { password });
+      } catch (err: any) {
+        toast.error(
+          err?.response?.status === 401
+            ? 'Incorrect password. Please try again.'
+            : err?.response?.data?.error || 'Unable to verify identity'
+        );
         return;
       }
 

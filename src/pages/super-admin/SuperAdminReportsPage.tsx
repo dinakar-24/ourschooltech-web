@@ -12,7 +12,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAllSubscriptions } from '@/hooks/useSubscription';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
@@ -23,43 +23,44 @@ export default function SuperAdminReportsPage() {
   const { data: stats, isLoading: statsLoading } = useQuery({
     queryKey: ['super-admin-report-stats'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_super_admin_stats' as any);
-      if (error) throw error;
-      const r = data as any;
+      const { data } = await api.get('/superadmin/dashboard');
+      const r = data.stats ?? {};
       return {
-        totalSchools: Number(r?.totalSchools ?? 0),
-        totalStudents: Number(r?.totalStudents ?? 0),
-        totalTeachers: Number(r?.totalTeachers ?? 0),
-        activeSubscriptions: Number(r?.activeSubscriptions ?? 0),
+        totalSchools: Number(r.totalSchools ?? 0),
+        totalStudents: Number(r.totalStudents ?? 0),
+        totalTeachers: Number(r.totalTeachers ?? 0),
+        activeSubscriptions: Number(r.activeSubscriptions ?? 0),
       };
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  // Role counts
+  // Role counts — now returned alongside the user list rather than by a
+  // dedicated RPC, so limit=1 keeps the payload small.
+  // ⚠️ `no_role` is always 0: User.role is a required enum in Express, so a
+  // user without a role cannot exist. See useAllUsers for the full note.
   const { data: roleCounts, isLoading: rolesLoading } = useQuery({
     queryKey: ['role-counts-report'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_role_counts' as any);
-      if (error) throw error;
-      return data as any;
+      const { data } = await api.get('/superadmin/users', { params: { limit: 1 } });
+      return data.roleCounts as Record<string, number>;
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  // City distribution
+  // City distribution — aggregated client-side exactly as before, just from
+  // the Express school list instead of a direct table read.
   const { data: cities } = useQuery({
     queryKey: ['city-distribution'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('schools')
-        .select('city')
-        .eq('is_active', true);
-      if (error) throw error;
+      const { data } = await api.get('/superadmin/schools', { params: { limit: 200 } });
       const cityMap: Record<string, number> = {};
-      data?.forEach(s => {
-        cityMap[s.city] = (cityMap[s.city] || 0) + 1;
-      });
+      (data.schools as Array<{ city: string | null; isActive: boolean; isSuspended: boolean }>)
+        .filter(s => s.isActive && !s.isSuspended)
+        .forEach(s => {
+          if (!s.city) return;
+          cityMap[s.city] = (cityMap[s.city] || 0) + 1;
+        });
       return Object.entries(cityMap)
         .sort(([, a], [, b]) => b - a)
         .slice(0, 10);

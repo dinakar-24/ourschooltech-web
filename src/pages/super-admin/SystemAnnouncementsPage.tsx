@@ -186,6 +186,11 @@ export default function SystemAnnouncementsPage() {
 
     setDeleteVerifying(true);
     try {
+      // ⚠️ Gate deliberately NOT migrated yet. POST /auth/verify-password
+      // exists, but the delete it guards targets `system_announcements`, which
+      // has no Prisma model (the existing Announcement model is school-scoped,
+      // not platform-wide). Fixing only the gate would move the failure one
+      // step later. Migrate both together.
       const { error: authError } = await supabase.auth.signInWithPassword({
         email: user.email,
         password: deletePassword,

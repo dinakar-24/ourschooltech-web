@@ -115,6 +115,16 @@ export function UserActionsMenu({
 
     setVerifying(true);
     try {
+      // ⚠️ Gate deliberately NOT migrated yet.
+      //
+      // POST /api/auth/verify-password now exists and would fix this check —
+      // but the actions it guards (useManageUser → the `manage-user` edge
+      // function) have no Express equivalent yet. Swapping only the gate would
+      // let the user pass the password prompt and then hit a different,
+      // more confusing failure. Migrate both together.
+      //
+      // Net effect today: signInWithPassword always errors, so this reports
+      // "Incorrect password" and the action aborts — it fails closed.
       const { error } = await supabase.auth.signInWithPassword({
         email: user.email,
         password,

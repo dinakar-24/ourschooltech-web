@@ -68,6 +68,11 @@ export function NotificationSettings() {
         return;
       }
 
+      // ⚠️ Gate deliberately NOT migrated yet. POST /auth/verify-password
+      // exists, but the save it guards writes through useSystemSettings, which
+      // has no Express equivalent (there is no SystemSetting Prisma model).
+      // Fixing only the gate would move the failure one step later instead of
+      // resolving it. Migrate both together.
       const { error } = await supabase.auth.signInWithPassword({
         email: user.email,
         password,

@@ -5,7 +5,7 @@ import { SubscriptionOverview } from '@/components/super-admin/SubscriptionOverv
 import { useAuth } from '@/contexts/AuthContext';
 import { Building2, Users, GraduationCap, CreditCard, School, ArrowUpRight, Activity } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEffect, useState, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -77,14 +77,16 @@ export default function SuperAdminDashboard() {
   const { data: stats, isLoading, isError, refetch } = useQuery({
     queryKey: ['super-admin-dashboard-stats'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_super_admin_stats' as any);
-      if (error) throw error;
-      const r = data as any;
+      // Migrated from the get_super_admin_stats RPC. `activeSubscriptions`
+      // was added to getDashboard for this — it counts schools whose
+      // subscriptionEnd is still in the future.
+      const { data } = await api.get('/superadmin/dashboard');
+      const r = data.stats ?? {};
       return {
-        totalSchools: Number(r?.totalSchools ?? 0),
-        totalStudents: Number(r?.totalStudents ?? 0),
-        totalTeachers: Number(r?.totalTeachers ?? 0),
-        activeSubscriptions: Number(r?.activeSubscriptions ?? 0),
+        totalSchools: Number(r.totalSchools ?? 0),
+        totalStudents: Number(r.totalStudents ?? 0),
+        totalTeachers: Number(r.totalTeachers ?? 0),
+        activeSubscriptions: Number(r.activeSubscriptions ?? 0),
       };
     },
     staleTime: 5 * 60 * 1000,
