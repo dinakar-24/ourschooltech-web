@@ -1,8 +1,20 @@
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
+
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from Supabase to /api/school/classes.
+//
+// Safe across portals: all 11 consumers are admin or teacher pages, and
+// /api/school/* permits SCHOOL_ADMIN, SUPER_ADMIN and TEACHER. (Contrast
+// useOnlineClasses/useTransport, which parents and students also call — those
+// would 403 on the same router.)
+//
+// The exported Section / ClassWithSections shapes and the ['classes', schoolId]
+// key are unchanged, so ClassesPage and the teacher pages need no edits.
+// ─────────────────────────────────────────────────────────────────────────
 
 export interface Section {
   id: string;
@@ -29,55 +41,72 @@ export interface ClassWithSections {
   sections: Section[];
 }
 
+/** Raw shapes from GET /api/school/classes */
+interface RawSection {
+  id: string;
+  classId: string;
+  schoolId: string;
+  name: string;
+  classTeacherId: string | null;
+  createdAt: string;
+  classTeacher?: { id: string; firstName: string; lastName: string } | null;
+  _count?: { students: number };
+}
+
+interface RawClass {
+  id: string;
+  schoolId: string;
+  name: string;
+  order: number;
+  createdAt: string;
+  sections: RawSection[];
+}
+
+function mapSection(raw: RawSection): Section {
+  return {
+    id: raw.id,
+    class_id: raw.classId,
+    school_id: raw.schoolId,
+    name: raw.name,
+    class_teacher_id: raw.classTeacherId,
+    created_at: raw.createdAt,
+    // ⚠️ Section has no updatedAt column in Prisma; mirror createdAt so the
+    // exported shape stays intact for consumers.
+    updated_at: raw.createdAt,
+    teacher: raw.classTeacher
+      ? {
+          id: raw.classTeacher.id,
+          full_name: `${raw.classTeacher.firstName} ${raw.classTeacher.lastName}`.trim(),
+        }
+      : null,
+    student_count: raw._count?.students ?? 0,
+  };
+}
+
+function mapClass(raw: RawClass): ClassWithSections {
+  return {
+    id: raw.id,
+    school_id: raw.schoolId,
+    name: raw.name,
+    display_order: raw.order,
+    created_at: raw.createdAt,
+    updated_at: raw.createdAt,
+    sections: (raw.sections || []).map(mapSection),
+  };
+}
+
 export function useClasses() {
   const schoolId = useEffectiveSchoolId();
 
   return useQuery({
     queryKey: ['classes', schoolId],
-    queryFn: async () => {
+    queryFn: async (): Promise<ClassWithSections[]> => {
       if (!schoolId) throw new Error('No school ID');
-
-      const { data: classes, error: classesError } = await supabase
-        .from('classes')
-        .select('id,name,display_order,school_id,created_at,updated_at')
-        .eq('school_id', schoolId)
-        .order('display_order', { ascending: true });
-
-      if (classesError) throw classesError;
-
-      const { data: sections, error: sectionsError } = await supabase
-        .from('sections')
-        .select(`
-          *,
-          teacher:teachers(id, full_name)
-        `)
-        .eq('school_id', schoolId);
-
-      if (sectionsError) throw sectionsError;
-
-      // Use RPC to get accurate student counts (avoids 1000-row limit)
-      const { data: countRows, error: countError } = await supabase
-        .rpc('get_student_counts_by_class', { p_school_id: schoolId });
-
-      if (countError) throw countError;
-
-      const studentCounts: Record<string, number> = {};
-      (countRows || []).forEach((r: { class_name: string; section: string; count: number }) => {
-        const key = `${r.class_name}-${r.section}`;
-        studentCounts[key] = r.count;
-      });
-
-      const classesWithSections: ClassWithSections[] = (classes || []).map(cls => ({
-        ...cls,
-        sections: (sections || [])
-          .filter(sec => sec.class_id === cls.id)
-          .map(sec => ({
-            ...sec,
-            student_count: studentCounts[`${cls.name}-${sec.name}`] || 0,
-          })),
-      }));
-
-      return classesWithSections;
+      // Sections, their class teacher and per-section student counts all come
+      // back in this one call — the old code needed three round trips plus a
+      // get_student_counts_by_class RPC.
+      const { data } = await api.get('/school/classes');
+      return (data.classes as RawClass[]).map(mapClass);
     },
     enabled: !!schoolId,
     staleTime: 10 * 60 * 1000, // Classes rarely change — long cache
@@ -86,40 +115,46 @@ export function useClasses() {
 
 export function useCreateClass() {
   const queryClient = useQueryClient();
-  const schoolId = useEffectiveSchoolId();
 
   return useMutation({
-    mutationFn: async ({ name, displayOrder, sections }: { 
-      name: string; 
+    mutationFn: async ({ name, displayOrder, sections, academicYearId }: {
+      name: string;
       displayOrder?: number;
       sections?: string[];
+      /** Optional — resolved from the current academic year when omitted. */
+      academicYearId?: string;
     }) => {
-      if (!schoolId) throw new Error('No school ID');
+      // POST /school/classes requires an academicYearId FK, which the old
+      // Supabase insert didn't. Resolve it here rather than changing the call
+      // site — and read it from Express, not useCurrentAcademicYear(), which
+      // is still Supabase-backed and would return nothing.
+      let yearId = academicYearId;
+      if (!yearId) {
+        const { data: yearData } = await api.get('/school/academic-years');
+        // getAcademicYears responds { years } ordered by startDate desc.
+        const list = (yearData.years || []) as Array<{ id: string; isCurrent: boolean }>;
+        yearId = (list.find(y => y.isCurrent) || list[0])?.id;
+      }
 
-      const { data: newClass, error: classError } = await supabase
-        .from('classes')
-        .insert({
-          school_id: schoolId,
-          name,
-          display_order: displayOrder || 0,
-        })
-        .select()
-        .single();
+      if (!yearId) {
+        throw new Error('No academic year found. Create one before adding classes.');
+      }
 
-      if (classError) throw classError;
+      const { data } = await api.post('/school/classes', {
+        name,
+        order: displayOrder || 0,
+        academicYearId: yearId,
+      });
 
+      const newClass = data.class as RawClass;
+
+      // No bulk section endpoint — create them one by one, same as before.
       if (sections && sections.length > 0) {
-        const sectionsToInsert = sections.map(sectionName => ({
-          class_id: newClass.id,
-          school_id: schoolId,
-          name: sectionName,
-        }));
-
-        const { error: sectionsError } = await supabase
-          .from('sections')
-          .insert(sectionsToInsert);
-
-        if (sectionsError) throw sectionsError;
+        await Promise.all(
+          sections.map(sectionName =>
+            api.post(`/school/classes/${newClass.id}/sections`, { name: sectionName }),
+          ),
+        );
       }
 
       return newClass;
@@ -128,44 +163,33 @@ export function useCreateClass() {
       queryClient.invalidateQueries({ queryKey: ['classes'] });
       toast.success('Class created successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create class');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to create class');
     },
   });
 }
 
 export function useCreateSection() {
   const queryClient = useQueryClient();
-  const schoolId = useEffectiveSchoolId();
 
   return useMutation({
-    mutationFn: async ({ classId, name, classTeacherId }: { 
-      classId: string; 
+    mutationFn: async ({ classId, name, classTeacherId }: {
+      classId: string;
       name: string;
       classTeacherId?: string;
     }) => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const { data, error } = await supabase
-        .from('sections')
-        .insert({
-          class_id: classId,
-          school_id: schoolId,
-          name,
-          class_teacher_id: classTeacherId || null,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const { data } = await api.post(`/school/classes/${classId}/sections`, {
+        name,
+        classTeacherId: classTeacherId || null,
+      });
+      return data.section;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classes'] });
       toast.success('Section added successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to add section');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to add section');
     },
   });
 }
@@ -174,72 +198,26 @@ export function useUpdateSection() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, classTeacherId }: { 
-      id: string; 
+    mutationFn: async ({ id, classTeacherId }: {
+      id: string;
       classTeacherId?: string | null;
     }) => {
-      // Get the section info (class_id, name, school_id) + class name
-      const { data: section, error: secError } = await supabase
-        .from('sections')
-        .select('id, name, class_id, school_id, class_teacher_id')
-        .eq('id', id)
-        .single();
-      if (secError) throw secError;
-
-      const { data: classRow } = await supabase
-        .from('classes')
-        .select('name')
-        .eq('id', section.class_id)
-        .single();
-
-      const classSection = classRow ? `${classRow.name}-${section.name}` : null;
-
-      // If there was a previous teacher, remove this class-section from their classes array
-      if (section.class_teacher_id && section.class_teacher_id !== classTeacherId && classSection) {
-        const { data: oldTeacher } = await supabase
-          .from('teachers')
-          .select('id, classes')
-          .eq('id', section.class_teacher_id)
-          .maybeSingle();
-        if (oldTeacher) {
-          const updatedClasses = (oldTeacher.classes || []).filter((c: string) => c !== classSection);
-          await supabase.from('teachers').update({ classes: updatedClasses }).eq('id', oldTeacher.id);
-        }
-      }
-
-      // Update the section's class_teacher_id
-      const { data, error } = await supabase
-        .from('sections')
-        .update({ class_teacher_id: classTeacherId })
-        .eq('id', id)
-        .select()
-        .single();
-      if (error) throw error;
-
-      // Add this class-section to the new teacher's classes array
-      if (classTeacherId && classSection) {
-        const { data: newTeacher } = await supabase
-          .from('teachers')
-          .select('id, classes')
-          .eq('id', classTeacherId)
-          .maybeSingle();
-        if (newTeacher) {
-          const currentClasses = newTeacher.classes || [];
-          if (!currentClasses.includes(classSection)) {
-            await supabase.from('teachers').update({ classes: [...currentClasses, classSection] }).eq('id', newTeacher.id);
-          }
-        }
-      }
-
-      return data;
+      // The old implementation also hand-maintained a `teachers.classes` string
+      // array on both the previous and new teacher — six extra queries to keep
+      // a denormalised field in sync. The Section → Teacher FK replaces it, so
+      // this is now a single call.
+      const { data } = await api.put(`/school/sections/${id}`, {
+        classTeacherId: classTeacherId ?? null,
+      });
+      return data.section;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classes'] });
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
       toast.success('Section updated successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update section');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to update section');
     },
   });
 }
@@ -249,19 +227,25 @@ export function useDeleteClass() {
 
   return useMutation({
     mutationFn: async (classId: string) => {
-      const { error } = await supabase
-        .from('classes')
-        .delete()
-        .eq('id', classId);
-
-      if (error) throw error;
+      await api.delete(`/school/classes/${classId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['classes'] });
       toast.success('Class deleted successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete class');
+    onError: (error: any) => {
+      // The endpoint returns 409 CLASS_HAS_DEPENDENCIES with counts rather than
+      // letting Postgres reject the delete on a foreign key.
+      const data = error?.response?.data;
+      if (data?.code === 'CLASS_HAS_DEPENDENCIES') {
+        const d = data.dependencies || {};
+        toast.error(
+          `Cannot delete: this class still has ${d.sections || 0} section(s), ` +
+          `${d.subjects || 0} subject(s) and ${d.feeStructures || 0} fee structure(s).`
+        );
+        return;
+      }
+      toast.error(data?.error || 'Failed to delete class');
     },
   });
 }

@@ -1,10 +1,21 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
-import { useDebounce } from '@/hooks/useDebounce';
-import { getSupabaseRange } from './usePagination';
 import { toast } from 'sonner';
 import { queryKeys } from '@/lib/query-keys';
+
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from Supabase to /api/school/fees/*.
+//
+// Safe across portals despite the name: ParentFees imports only the
+// FeeInvoice / FeePayment *types* from here and fetches through
+// useParentInvoices. So the coupling is type-level — these interfaces must
+// stay renderable by ParentFees, but no parent ever hits /api/school/*
+// (which is staff-only and would 403).
+//
+// useCreateInvoice is the one export still on Supabase — see its note.
+// ─────────────────────────────────────────────────────────────────────────
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -72,6 +83,99 @@ interface InvoiceFilters {
   pageSize?: number;
 }
 
+// ─── Raw API shapes + mapping ────────────────────────────────────────
+
+interface RawInvoice {
+  id: string;
+  schoolId: string;
+  studentId: string;
+  invoiceNo: string;
+  totalAmount: string | number;
+  paidAmount: string | number;
+  dueAmount: string | number;
+  dueDate: string;
+  status: string;
+  createdAt: string;
+  student?: {
+    id?: string;
+    firstName: string;
+    lastName: string;
+    admissionNo: string;
+    rollNo: string | null;
+    section?: { name: string; class?: { name: string } | null } | null;
+    parents?: Array<{ firstName: string; lastName: string; user?: { email: string } | null }>;
+  } | null;
+  items?: Array<{ id: string; name: string; amount: string | number }>;
+  payments?: Array<{
+    id: string;
+    amount: string | number;
+    method: string;
+    transactionId: string | null;
+    receiptNo: string | null;
+    paidAt: string | null;
+    createdAt: string;
+  }>;
+}
+
+const num = (v: string | number | null | undefined) => Number(v ?? 0);
+
+function mapInvoice(raw: RawInvoice): FeeInvoice {
+  const s = raw.student;
+  const parent = s?.parents?.[0] ?? null;
+
+  return {
+    id: raw.id,
+    school_id: raw.schoolId,
+    student_id: raw.studentId,
+    total_amount: num(raw.totalAmount),
+    paid_amount: num(raw.paidAmount),
+    // Prisma calls the outstanding balance dueAmount.
+    balance: num(raw.dueAmount),
+    // Enum is uppercase; the UI compares against lowercase throughout.
+    status: String(raw.status || '').toLowerCase(),
+    due_date: raw.dueDate,
+    created_at: raw.createdAt,
+    student: s
+      ? {
+          id: s.id ?? raw.studentId,
+          full_name: `${s.firstName} ${s.lastName}`.trim(),
+          class_name: s.section?.class?.name ?? '',
+          section: s.section?.name ?? '',
+          admission_number: s.admissionNo,
+          parent_name: parent ? `${parent.firstName} ${parent.lastName}`.trim() : null,
+          parent_email: parent?.user?.email ?? null,
+          roll_number: s.rollNo ? Number(s.rollNo) || null : null,
+        }
+      : undefined,
+    // FeeInvoiceItem.name carries what the UI calls fee_type.
+    components: (raw.items || []).map(i => ({
+      id: i.id,
+      invoice_id: raw.id,
+      fee_type: i.name,
+      amount: num(i.amount),
+    })),
+    payments: (raw.payments || []).map(p => ({
+      id: p.id,
+      invoice_id: raw.id,
+      student_id: raw.studentId,
+      school_id: raw.schoolId,
+      amount: num(p.amount),
+      payment_method: String(p.method || '').toLowerCase(),
+      transaction_id: p.transactionId,
+      payment_date: p.paidAt ?? p.createdAt,
+      receipt_number: p.receiptNo ?? '',
+      created_at: p.createdAt,
+      // ⚠️ Prisma's Payment model has no columns for these — they render
+      // blank until a schema migration adds them.
+      cheque_number: null,
+      cheque_date: null,
+      bank_name: null,
+      received_by: null,
+      notes: null,
+    })),
+  };
+}
+
 // ─── Fee Invoices ────────────────────────────────────────────────────
 
 
@@ -85,43 +189,29 @@ export function useFeeInvoices(filters?: InvoiceFilters) {
     queryFn: async () => {
       if (!schoolId) return { data: [] as FeeInvoice[], totalCount: 0 };
 
-      let query = supabase
-        .from('fee_invoices')
-        .select(`
-          id, school_id, student_id, total_amount, paid_amount, balance, status, due_date, created_at,
-          student:students!inner(id, full_name, class_name, section, admission_number, parent_name, parent_email, roll_number),
-          components:fee_invoice_components(id, fee_type, amount),
-          payments:fee_payments(id, amount, payment_method, transaction_id, cheque_number, cheque_date, bank_name, payment_date, received_by, receipt_number, notes, created_at, student_id, school_id)
-        `)
-        .eq('school_id', schoolId)
-        .order('due_date', { ascending: false });
+      const { data } = await api.get('/school/fees/invoices', {
+        params: {
+          page,
+          limit: pageSize,
+          // Backend normalises case and rejects anything outside the
+          // InvoiceStatus enum, so 'overdue' maps straight through — no more
+          // client-side "pending AND past due date" reconstruction.
+          status: filters?.status && filters.status !== 'all' ? filters.status : undefined,
+          search: filters?.search || undefined,
+        },
+      });
 
-      if (filters?.status && filters.status !== 'all') {
-        if (filters.status === 'overdue') {
-          query = query.eq('status', 'pending').lt('due_date', new Date().toISOString().split('T')[0]);
-        } else {
-          query = query.eq('status', filters.status);
-        }
-      }
+      let rows = (data.invoices as RawInvoice[]).map(mapInvoice);
 
-
+      // ⚠️ No class filter on the endpoint — applied to this page's rows only,
+      // so it is NOT reliable across pages (same caveat as useStudents).
       if (filters?.className && filters.className !== 'all') {
-        query = query.eq('student.class_name', filters.className);
+        rows = rows.filter(r => r.student?.class_name === filters.className);
       }
 
-      if (filters?.search) {
-        query = query.or(
-          `student.full_name.ilike.%${filters.search}%,student.admission_number.ilike.%${filters.search}%`,
-          { foreignTable: 'student' }
-        );
-      }
-
-      const { from, to } = getSupabaseRange(page, pageSize);
-      query = query.range(from, to);
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return { data: (data || []) as unknown as FeeInvoice[], totalCount: from + (data?.length ?? 0) + ((data?.length ?? 0) === pageSize ? 1 : 0) };
+      // totalCount is now exact; the old code estimated it with a
+      // "+1 if the page looks full" hack because Supabase didn't return it.
+      return { data: rows, totalCount: data.pagination.total as number };
     },
     enabled: !!schoolId,
     staleTime: 2 * 60 * 1000,
@@ -138,17 +228,19 @@ export function useInvoiceStats() {
     queryFn: async (): Promise<InvoiceStats> => {
       if (!schoolId) return { totalDue: 0, collected: 0, pending: 0, overdue: 0 };
 
-      const { data, error } = await supabase.rpc('get_invoice_stats' as any, {
-        _school_id: schoolId,
-      } as any);
+      const { data } = await api.get('/school/fees/summary');
+      const s = data.summary ?? {};
 
-      if (error) throw error;
-      const r = data as any;
+      // ⚠️ Semantic mismatch worth knowing about: the UI renders all four of
+      // these as currency, but /fees/summary returns two amounts and two
+      // COUNTS — `pendingInvoices` and `overdueInvoices` are invoice counts,
+      // not rupee totals. Mapped straight across so nothing is invented;
+      // getFeeSummary needs to sum dueAmount for those tiles to be correct.
       return {
-        totalDue: Number(r?.totalDue ?? 0),
-        collected: Number(r?.collected ?? 0),
-        pending: Number(r?.pending ?? 0),
-        overdue: Number(r?.overdue ?? 0),
+        totalDue: Number(s.totalAmount ?? 0),
+        collected: Number(s.collectedAmount ?? 0),
+        pending: Number(s.pendingInvoices ?? 0),
+        overdue: Number(s.overdueInvoices ?? 0),
       };
     },
     enabled: !!schoolId,
@@ -158,6 +250,22 @@ export function useInvoiceStats() {
 
 // ─── Create Invoice ──────────────────────────────────────────────────
 
+/**
+ * ⚠️ NOT MIGRATED — BLOCKED on a required FK, still on Supabase.
+ *
+ * `POST /api/school/fees/invoices` builds its line items as
+ * `FeeInvoiceItem { feeStructureId, name, amount }`, and `feeStructureId` is
+ * a **required** relation. CreateInvoiceDialog collects `fee_type` as free
+ * text with no fee-structure reference, so there is nothing to send.
+ *
+ * Two ways out, both outside this batch:
+ *   - make `FeeInvoiceItem.feeStructureId` optional (schema migration), or
+ *   - have the dialog pick from GET /school/fees/structures (a UI change,
+ *     which the project rules exclude).
+ *
+ * Left on Supabase deliberately rather than shipping an endpoint call that
+ * would fail its foreign key on every submit.
+ */
 export function useCreateInvoice() {
   const queryClient = useQueryClient();
   const schoolId = useEffectiveSchoolId();
@@ -222,23 +330,23 @@ export function useApplyDiscount() {
     }) => {
       if (!schoolId) throw new Error('No school ID');
 
-      const { data, error } = await supabase.rpc('apply_fee_discount' as any, {
-        _school_id: schoolId,
-        _invoice_id: params.invoice_id,
-        _student_id: params.student_id,
-        _discount_amount: params.discount_amount,
-        _reason: params.reason,
-        _notes: params.notes || null,
-        _applied_by: null,
-      } as any);
-
-      if (error) throw error;
-      return data as any;
+      // Replaces the apply_fee_discount RPC. The endpoint recomputes
+      // dueAmount and status server-side in one update.
+      // ⚠️ `notes` has no column on FeeInvoice — the backend logs the reason
+      // rather than persisting it. Needs an audit/notes column to survive.
+      const { data } = await api.post(`/school/fees/invoices/${params.invoice_id}/discount`, {
+        amount: params.discount_amount,
+        reason: params.reason,
+      });
+      return data.invoice;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allFeeInvoices });
       queryClient.invalidateQueries({ queryKey: queryKeys.allInvoiceStats });
       toast.success('Discount applied successfully');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to apply discount');
     },
   });
 }
@@ -265,28 +373,27 @@ export function useRecordInvoicePayment() {
     }) => {
       if (!schoolId) throw new Error('No school ID');
 
-      const { data, error } = await supabase.rpc('record_fee_payment' as any, {
-        _school_id: schoolId,
-        _invoice_id: payment.invoice_id,
-        _student_id: payment.student_id,
-        _amount: payment.amount,
-        _payment_method: payment.payment_method,
-        _transaction_id: payment.transaction_id || null,
-        _cheque_number: payment.cheque_number || null,
-        _cheque_date: payment.cheque_date || null,
-        _bank_name: payment.bank_name || null,
-        _payment_date: payment.payment_date,
-        _received_by: payment.received_by || null,
-        _notes: payment.notes || null,
-      } as any);
+      // ⚠️ Prisma's Payment model has no columns for cheque_number,
+      // cheque_date, bank_name, received_by or notes, and the endpoint takes
+      // no payment_date (it stamps paidAt itself). Those five inputs are
+      // accepted by the dialog but **silently dropped** until a schema
+      // migration adds them — the payment amount and receipt are unaffected.
+      const { data } = await api.post(`/school/fees/invoices/${payment.invoice_id}/pay`, {
+        amount: payment.amount,
+        // PaymentMethod is an uppercase Prisma enum.
+        method: String(payment.payment_method || '').toUpperCase(),
+        remarks: payment.notes || undefined,
+      });
 
-      if (error) throw error;
-      return data as any;
+      return data.payment ?? data;
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allFeeInvoices });
       queryClient.invalidateQueries({ queryKey: queryKeys.allInvoiceStats });
-      toast.success(`Payment recorded! Receipt: ${data?.receipt_number}`);
+      toast.success(`Payment recorded! Receipt: ${data?.receiptNo ?? data?.receipt_number ?? ''}`);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to record payment');
     },
   });
 }

@@ -2,9 +2,6 @@ import { ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth, UserRole } from '@/contexts/AuthContext';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { useTranslation } from 'react-i18next';
 import {
@@ -62,23 +59,15 @@ export function MobileLayout({ children, title, showBack, onBack }: MobileLayout
   const location = useLocation();
   const { t } = useTranslation();
 
-  // Fetch avatar from profiles table as fallback
-  const { data: profileAvatar } = useQuery({
-    queryKey: ['profile-avatar', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      // Check profiles table first
-      const { data: profile } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
-      if (profile?.avatar_url) return profile.avatar_url;
-      // For students, also check students table
-      const { data: student } = await supabase.from('students').select('avatar_url').eq('user_id', user.id).maybeSingle();
-      return student?.avatar_url || null;
-    },
-    enabled: !!user?.id && !user?.avatar,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const avatarUrl = user?.avatar || profileAvatar;
+  // The Supabase `profile-avatar` fallback query was removed, not migrated.
+  // It resolved an avatar that this component never rendered — the header
+  // shows the school logo and the notification bell, not a user avatar. So it
+  // was a per-mount round trip on every teacher/parent/student page for a
+  // value that was thrown away.
+  //
+  // If an avatar is ever wanted here, use `user.avatar` — GET /auth/me already
+  // resolves it from the role-specific profile. Note Parent and SchoolAdmin
+  // have no photo column in Prisma, so theirs would be null.
 
   const role = user?.role || 'student';
   const navItems = navConfigKeys[role] || [];
