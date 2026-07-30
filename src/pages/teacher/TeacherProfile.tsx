@@ -28,15 +28,13 @@ import {
 // Teacher already carries phone/photo directly, so the old second query
 // against `profiles` is gone entirely, not just rewired.
 //
-// Two stats are intentionally NOT wired up — open decisions, not guesses:
-//   - "classes": the old Teacher.classes (string[]) has no schema equivalent.
-//     Could mean sections taught (GET /api/teacher/classes) or sections
-//     where this teacher is the class teacher (Section.classTeacherId) —
-//     two different concepts the old flat array conflated. Shows 0 until
-//     someone picks one.
-//   - "joining_date"/"Since": Teacher has no such column at all, under any
-//     name. Could fall back to createdAt or get a real column added
-//     (mirrors the Teacher.subjects precedent) — shows '-' until decided.
+// "classes" reuses the same GET /api/teacher/classes + dedupe-by-classId
+// approach as TeacherDashboard.tsx, so both pages report the same number
+// for the same teacher.
+//
+// "joining_date"/"Since" is still NOT wired up: Teacher has no such column
+// at all, under any name. Could fall back to createdAt or get a real column
+// added (mirrors the Teacher.subjects precedent) — shows '-' until decided.
 // ─────────────────────────────────────────────────────────────────────────
 
 interface RawTeacherProfile {
@@ -64,6 +62,15 @@ export default function TeacherProfile() {
     enabled: !!user?.id,
   });
 
+  const { data: classCount = 0 } = useQuery({
+    queryKey: ['teacher-class-count', user?.id],
+    queryFn: async () => {
+      const { data } = await api.get<{ sections: Array<{ classId: string }> }>('/teacher/classes');
+      return new Set(data.sections.map(s => s.classId)).size;
+    },
+    enabled: !!user?.id,
+  });
+
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -79,7 +86,6 @@ export default function TeacherProfile() {
   ];
 
   const subjectCount = teacher?.subjects?.length ?? 0;
-  const classCount = 0; // see migration-notes comment above — open decision, not guessed
 
   return (
     <MobileLayout title="Profile">
