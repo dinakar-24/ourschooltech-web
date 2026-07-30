@@ -37,6 +37,7 @@ export interface User {
   email: string;
   role: UserRole;
   avatar?: string;
+  phone?: string;
   schoolId: string;
   schoolName: string;
   childName?: string;
@@ -86,6 +87,7 @@ interface RawAuthUser {
   schoolId: string | null;
   name?: string | null;
   avatar?: string | null;
+  phone?: string | null;
   school?: {
     id?: string;
     name: string;
@@ -122,6 +124,7 @@ function mapUser(raw: RawAuthUser, school: School | null): User {
     email: raw.email,
     role: toUserRole(raw.role),
     avatar: raw.avatar || undefined,
+    phone: raw.phone || undefined,
     schoolId: raw.schoolId ?? '',
     schoolName: school?.name ?? '',
   };

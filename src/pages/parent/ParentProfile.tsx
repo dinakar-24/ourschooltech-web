@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,8 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
 import { useParentChild } from '@/hooks/useParentData';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import {
   Mail,
   Phone,
@@ -23,23 +23,13 @@ import {
 export default function ParentProfile() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { data: child, isLoading: childLoading } = useParentChild();
 
-  // Fetch parent profile for phone
-  const { data: profile, isLoading: profileLoading } = useQuery({
-    queryKey: ['parent-profile', user?.id],
-    queryFn: async () => {
-      if (!user?.id) return null;
-      const { data } = await supabase
-        .from('profiles')
-        .select('phone, avatar_url')
-        .eq('id', user.id)
-        .single();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
+  // AuthContext doesn't expose a way to refresh `user` after a profile edit
+  // (its shape is deliberately frozen — see useParentData.ts / AuthContext.tsx
+  // migration notes), so the avatar is tracked locally and seeded from the
+  // /auth/me value already on `user`.
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar);
 
   const handleLogout = () => {
     logout();
@@ -52,9 +42,6 @@ export default function ParentProfile() {
     { label: 'Settings', icon: Settings, href: '/parent/settings' },
   ];
 
-  const avatarUrl = user?.avatar || profile?.avatar_url;
-  const isLoading = profileLoading;
-
   return (
     <MobileLayout title="Profile">
       <div className="p-4 space-y-4">
@@ -65,10 +52,8 @@ export default function ParentProfile() {
               <AvatarUpload
                 value={avatarUrl}
                 onChange={async (url) => {
-                  if (user?.id) {
-                    await supabase.from('profiles').update({ avatar_url: url }).eq('id', user.id);
-                  }
-                  queryClient.invalidateQueries({ queryKey: ['parent-profile'] });
+                  await api.patch('/parent/profile', { photo: url });
+                  setAvatarUrl(url ?? undefined);
                 }}
                 fallback={user?.name}
                 size="lg"
@@ -87,11 +72,7 @@ export default function ParentProfile() {
               </div>
               <div className="flex items-center gap-3 text-sm">
                 <Phone className="w-4 h-4 text-muted-foreground" />
-                {isLoading ? (
-                  <Skeleton className="h-4 w-28" />
-                ) : (
-                  <span>{profile?.phone || 'Not provided'}</span>
-                )}
+                <span>{user?.phone || 'Not provided'}</span>
               </div>
             </div>
           </CardContent>
