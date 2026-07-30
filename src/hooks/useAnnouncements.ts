@@ -1,14 +1,53 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
-import { Database } from '@/integrations/supabase/types';
-import { getSupabaseRange } from './usePagination';
-import { sendNotification } from '@/lib/send-notification';
 import { queryKeys } from '@/lib/query-keys';
 
-type AppRole = Database['public']['Enums']['app_role'];
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from Supabase to /api/school/announcements. Full CRUD deferred
+// from the Teacher/Student batch — that batch only wired up the read-only
+// student path (useStudentAnnouncements in useStudentData.ts), which is
+// untouched here.
+//
+// target_roles is now genuinely array-valued server-side too (Prisma
+// `targetRoles Role[]`), replacing the old single nullable `targetRole`
+// enum — the parent/teacher/student announcement-read routes were updated
+// to match (`targetRoles: { isEmpty: true } OR { has: 'X' }`, same "empty =
+// broadcast to everyone" convention the old target_classes filtering used).
+//
+// target_classes is DROPPED, not ported: AnnouncementsPage.tsx never had a
+// UI control for it despite the old types declaring it — there was nothing
+// real to migrate.
+//
+// image_url persists through the renamed `imageUrl` column (was the unused
+// `attachment` field). The upload step itself stays on Supabase Storage —
+// same precedent as AvatarUpload, which already proved Storage still works
+// independent of Supabase Auth post-migration.
+//
+// The notification fan-out on publish is now done server-side
+// (announcement.controller.js), off User.role/schoolId directly — the old
+// client-side chain through `user_roles` + `profiles` doesn't exist in this
+// schema. Nothing left to do here on success beyond toast + invalidate.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type AppRole = 'super_admin' | 'school_admin' | 'teacher' | 'parent' | 'student';
+
+const ROLE_TO_API: Record<AppRole, string> = {
+  super_admin: 'SUPER_ADMIN',
+  school_admin: 'SCHOOL_ADMIN',
+  teacher: 'TEACHER',
+  parent: 'PARENT',
+  student: 'STUDENT',
+};
+
+const ROLE_FROM_API: Record<string, AppRole> = {
+  SUPER_ADMIN: 'super_admin',
+  SCHOOL_ADMIN: 'school_admin',
+  TEACHER: 'teacher',
+  PARENT: 'parent',
+  STUDENT: 'student',
+};
 
 export interface Announcement {
   id: string;
@@ -17,7 +56,6 @@ export interface Announcement {
   is_active: boolean;
   expires_at: string | null;
   target_roles: AppRole[] | null;
-  target_classes: string[] | null;
   created_by: string | null;
   created_at: string;
   school_id: string;
@@ -28,7 +66,6 @@ export interface AnnouncementFormData {
   title: string;
   content: string;
   target_roles: AppRole[];
-  target_classes?: string[];
   expires_at?: string;
   is_active: boolean;
   image_url?: string | null;
@@ -46,6 +83,35 @@ export interface PaginatedAnnouncements {
   totalCount: number;
 }
 
+/** Raw shape of an announcement row from the Express API */
+interface RawAnnouncement {
+  id: string;
+  schoolId: string;
+  title: string;
+  content: string;
+  targetRoles: string[];
+  imageUrl: string | null;
+  isActive: boolean;
+  expiresAt: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+function mapAnnouncement(raw: RawAnnouncement): Announcement {
+  return {
+    id: raw.id,
+    title: raw.title,
+    content: raw.content,
+    is_active: raw.isActive,
+    expires_at: raw.expiresAt,
+    target_roles: raw.targetRoles.map(r => ROLE_FROM_API[r]).filter(Boolean),
+    created_by: raw.createdBy,
+    created_at: raw.createdAt,
+    school_id: raw.schoolId,
+    image_url: raw.imageUrl,
+  };
+}
+
 export function useAnnouncements(filters?: AnnouncementFilters) {
   const schoolId = useEffectiveSchoolId();
   const page = filters?.page || 1;
@@ -56,29 +122,16 @@ export function useAnnouncements(filters?: AnnouncementFilters) {
     queryFn: async (): Promise<PaginatedAnnouncements> => {
       if (!schoolId) throw new Error('No school ID');
 
-      let query = supabase
-        .from('announcements')
-        .select('*', { count: 'exact' })
-        .eq('school_id', schoolId)
-        .order('created_at', { ascending: false });
+      const { data } = await api.get<{ announcements: RawAnnouncement[]; total: number }>('/school/announcements', {
+        params: {
+          page,
+          pageSize,
+          status: filters?.status && filters.status !== 'all' ? filters.status : undefined,
+          search: filters?.search || undefined,
+        },
+      });
 
-      if (filters?.status === 'active') {
-        query = query.eq('is_active', true);
-      } else if (filters?.status === 'inactive') {
-        query = query.eq('is_active', false);
-      }
-
-      if (filters?.search) {
-        query = query.or(`title.ilike.%${filters.search}%,content.ilike.%${filters.search}%`);
-      }
-
-      const { from, to } = getSupabaseRange(page, pageSize);
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-      return { data: (data || []) as Announcement[], totalCount: count || 0 };
+      return { data: data.announcements.map(mapAnnouncement), totalCount: data.total };
     },
     enabled: !!schoolId,
     staleTime: 2 * 60 * 1000,
@@ -93,99 +146,37 @@ export function useAnnouncementStats() {
     queryFn: async () => {
       if (!schoolId) throw new Error('No school ID');
 
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      const monthStartStr = monthStart.toISOString();
-
-      const [totalResult, activeResult, thisMonthResult] = await Promise.all([
-        supabase.from('announcements').select('*', { count: 'exact', head: true }).eq('school_id', schoolId),
-        supabase.from('announcements').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).eq('is_active', true),
-        supabase.from('announcements').select('*', { count: 'exact', head: true }).eq('school_id', schoolId).gte('created_at', monthStartStr),
-      ]);
-
-      return {
-        total: totalResult.count || 0,
-        active: activeResult.count || 0,
-        inactive: (totalResult.count || 0) - (activeResult.count || 0),
-        thisMonth: thisMonthResult.count || 0,
-      };
+      const { data } = await api.get<{ total: number; active: number; inactive: number; thisMonth: number }>('/school/announcements/stats');
+      return data;
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,
   });
 }
 
+function toApiPayload(formData: Partial<AnnouncementFormData>) {
+  return {
+    ...(formData.title !== undefined && { title: formData.title }),
+    ...(formData.content !== undefined && { content: formData.content }),
+    ...(formData.target_roles !== undefined && { targetRoles: formData.target_roles.map(r => ROLE_TO_API[r]) }),
+    ...(formData.expires_at !== undefined && { expiresAt: formData.expires_at || null }),
+    ...(formData.image_url !== undefined && { imageUrl: formData.image_url }),
+    ...(formData.is_active !== undefined && { isActive: formData.is_active }),
+  };
+}
+
 export function useCreateAnnouncement() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const schoolId = useEffectiveSchoolId();
 
   return useMutation({
     mutationFn: async (formData: AnnouncementFormData) => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const { data, error } = await supabase
-        .from('announcements')
-        .insert({
-          title: formData.title,
-          content: formData.content,
-          target_roles: formData.target_roles,
-          target_classes: formData.target_classes || null,
-          expires_at: formData.expires_at || null,
-          is_active: formData.is_active,
-          image_url: formData.image_url || null,
-          school_id: schoolId,
-          created_by: user?.id || null,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const { data } = await api.post<{ announcement: RawAnnouncement }>('/school/announcements', toApiPayload(formData));
+      return mapAnnouncement(data.announcement);
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allAnnouncements });
       queryClient.invalidateQueries({ queryKey: queryKeys.allAnnouncementStats });
       toast.success(variables.is_active ? 'Announcement published!' : 'Announcement saved as draft');
-
-      // Notify targeted users when announcement is active
-      if (variables.is_active && schoolId && data) {
-        const targetRoles = variables.target_roles;
-
-        if (targetRoles?.length) {
-          // Get all users with the targeted roles in this school
-          supabase
-            .from('user_roles')
-            .select('user_id')
-            .in('role', targetRoles)
-            .then(({ data: roleUsers }) => {
-              if (!roleUsers?.length) return;
-
-              const roleUserIds = roleUsers.map(r => r.user_id);
-
-              // Filter to users in this school
-              supabase
-                .from('profiles')
-                .select('id')
-                .eq('school_id', schoolId)
-                .in('id', roleUserIds)
-                .then(({ data: schoolUsers }) => {
-                  if (!schoolUsers?.length) return;
-
-                  const userIds = schoolUsers.map(u => u.id);
-
-                  sendNotification({
-                    userIds,
-                    title: 'New Announcement',
-                    body: variables.title,
-                    type: 'announcement',
-                    referenceId: data.id,
-                    schoolId,
-                  });
-                });
-            });
-        }
-      }
     },
     // Global mutation error handler provides fallback toast
   });
@@ -196,15 +187,8 @@ export function useUpdateAnnouncement() {
 
   return useMutation({
     mutationFn: async ({ id, ...formData }: Partial<AnnouncementFormData> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('announcements')
-        .update(formData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const { data } = await api.patch<{ announcement: RawAnnouncement }>(`/school/announcements/${id}`, toApiPayload(formData));
+      return mapAnnouncement(data.announcement);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allAnnouncements });
@@ -219,12 +203,7 @@ export function useDeleteAnnouncement() {
 
   return useMutation({
     mutationFn: async (announcementId: string) => {
-      const { error } = await supabase
-        .from('announcements')
-        .delete()
-        .eq('id', announcementId);
-
-      if (error) throw error;
+      await api.delete(`/school/announcements/${announcementId}`);
     },
     // Optimistic: remove from cache immediately
     onMutate: async (announcementId) => {
@@ -261,12 +240,7 @@ export function useToggleAnnouncement() {
 
   return useMutation({
     mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
-      const { error } = await supabase
-        .from('announcements')
-        .update({ is_active: isActive })
-        .eq('id', id);
-
-      if (error) throw error;
+      await api.patch(`/school/announcements/${id}/toggle`, { isActive });
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allAnnouncements });

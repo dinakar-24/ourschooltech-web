@@ -27,7 +27,6 @@ import {
 import { useFeeInvoices, useInvoiceStats, FeeInvoice } from '@/hooks/useFeeInvoices';
 import { usePaymentSubmissions } from '@/hooks/usePaymentSubmissions';
 import { PaymentVerificationPanel } from '@/components/fees/PaymentVerificationPanel';
-import { useFees, FeeRecord } from '@/hooks/useFees';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useFeeRealtime } from '@/hooks/useFeeRealtime';
@@ -44,13 +43,16 @@ interface StudentGroup {
   className: string;
   section: string;
   invoices: FeeInvoice[];
-  legacyFees: FeeRecord[];
   totalAmount: number;
   totalPaid: number;
   totalBalance: number;
 }
 
-function groupByStudent(invoices: FeeInvoice[], legacyFees: FeeRecord[]): StudentGroup[] {
+// Legacy fee-table merge dropped here: useFeeInvoices already represents
+// everything the flat `fees` table tracked, and there's no Express
+// equivalent of that table to reconcile against (superseded by design, not
+// "not yet built"). See useFees.ts's own migration note.
+function groupByStudent(invoices: FeeInvoice[]): StudentGroup[] {
   const map = new Map<string, StudentGroup>();
 
   for (const inv of invoices) {
@@ -63,7 +65,6 @@ function groupByStudent(invoices: FeeInvoice[], legacyFees: FeeRecord[]): Studen
         className: inv.student?.class_name || '',
         section: inv.student?.section || '',
         invoices: [],
-        legacyFees: [],
         totalAmount: 0,
         totalPaid: 0,
         totalBalance: 0,
@@ -74,32 +75,6 @@ function groupByStudent(invoices: FeeInvoice[], legacyFees: FeeRecord[]): Studen
     g.totalAmount += Number(inv.total_amount);
     g.totalPaid += Number(inv.paid_amount);
     g.totalBalance += Number(inv.balance);
-  }
-
-  for (const fee of legacyFees) {
-    const sid = fee.student_id;
-    if (!map.has(sid)) {
-      map.set(sid, {
-        studentId: sid,
-        name: fee.student?.full_name || 'Unknown',
-        admissionNumber: fee.student?.admission_number || '',
-        className: fee.student?.class_name || '',
-        section: fee.student?.section || '',
-        invoices: [],
-        legacyFees: [],
-        totalAmount: 0,
-        totalPaid: 0,
-        totalBalance: 0,
-      });
-    }
-    const g = map.get(sid)!;
-    g.legacyFees.push(fee);
-    g.totalAmount += Number(fee.amount);
-    if (fee.status === 'paid') {
-      g.totalPaid += Number(fee.amount);
-    } else {
-      g.totalBalance += Number(fee.amount);
-    }
   }
 
   return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -147,25 +122,16 @@ export default function FeesPage() {
   const totalCount = invoicesResult?.totalCount || 0;
   const { data: invoiceStats } = useInvoiceStats();
 
-  const { data: legacyResult, isLoading: legacyLoading } = useFees({
-    status: selectedStatus,
-    search: debouncedSearch,
-    className: selectedClass,
-    page,
-    pageSize,
-  });
-  const legacyFees = legacyResult?.data || [];
-
   const stats = invoiceStats;
-  const loading = isLoading || legacyLoading;
+  const loading = isLoading;
   const totalPages = Math.ceil(totalCount / pageSize);
 
   const { data: pendingSubmissions = [] } = usePaymentSubmissions('pending');
   const pendingCount = pendingSubmissions.length;
 
   const studentGroups = useMemo(
-    () => groupByStudent(invoices, legacyFees),
-    [invoices, legacyFees]
+    () => groupByStudent(invoices),
+    [invoices]
   );
 
   const filteredGroups = useMemo(() => {
@@ -181,8 +147,7 @@ export default function FeesPage() {
       if (selectedStatus === 'pending') return g.totalBalance > 0;
       if (selectedStatus === 'overdue') {
         const today = new Date().toISOString().split('T')[0];
-        return g.invoices.some(i => i.status === 'pending' && i.due_date < today) ||
-          g.legacyFees.some(f => f.status === 'pending' && f.due_date < today);
+        return g.invoices.some(i => i.status === 'pending' && i.due_date < today);
       }
       return true;
     });
@@ -192,8 +157,7 @@ export default function FeesPage() {
     if (g.totalAmount === 0) return <Badge variant="secondary">No Fees</Badge>;
     if (g.totalBalance === 0) return <Badge className="bg-success text-success-foreground">Paid</Badge>;
     const today = new Date().toISOString().split('T')[0];
-    const hasOverdue = g.invoices.some(i => i.status === 'pending' && i.due_date < today) ||
-      g.legacyFees.some(f => f.status === 'pending' && f.due_date < today);
+    const hasOverdue = g.invoices.some(i => i.status === 'pending' && i.due_date < today);
     if (hasOverdue) return <Badge variant="destructive">Overdue</Badge>;
     return <Badge variant="secondary">Pending</Badge>;
   };

@@ -2,9 +2,7 @@ import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { useStudentFeeInvoices } from '@/hooks/useStudentFeeInvoices';
-import { useFees } from '@/hooks/useFees';
 import { FeeInvoice, FeePayment } from '@/hooks/useFeeInvoices';
-import { FeeRecord } from '@/hooks/useFees';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -12,7 +10,6 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RecordPaymentDialog } from '@/components/fees/RecordPaymentDialog';
 import { PaymentReceiptDialog } from '@/components/fees/PaymentReceiptDialog';
-import { FeeReceiptDialog } from '@/components/fees/FeeReceiptDialog';
 import { ApplyDiscountDialog } from '@/components/fees/ApplyDiscountDialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useFeeRealtime } from '@/hooks/useFeeRealtime';
@@ -76,16 +73,6 @@ export default function StudentFeesPage() {
   });
 
   const { data: invoices = [], isLoading } = useStudentFeeInvoices(studentId);
-  const { data: legacyResult, isLoading: legacyLoading } = useFees({
-    search: '',
-    page: 1,
-    pageSize: 500,
-  });
-
-  // Filter legacy fees to this student
-  const legacyFees = useMemo(() => {
-    return (legacyResult?.data || []).filter(f => f.student_id === studentId);
-  }, [legacyResult, studentId]);
 
   // Dialogs
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -95,14 +82,14 @@ export default function StudentFeesPage() {
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [receiptPayment, setReceiptPayment] = useState<FeePayment | null>(null);
   const [receiptInvoice, setReceiptInvoice] = useState<FeeInvoice | null>(null);
-  const [legacyReceiptOpen, setLegacyReceiptOpen] = useState(false);
-  const [legacyReceiptFee, setLegacyReceiptFee] = useState<any>(null);
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
   const [discountInvoice, setDiscountInvoice] = useState<FeeInvoice | null>(null);
 
-  const loading = isLoading || legacyLoading;
+  const loading = isLoading;
 
-  // Compute totals
+  // Compute totals. Legacy fee-table merge dropped here: useFeeInvoices
+  // already represents everything the flat `fees` table tracked — see
+  // useFees.ts's own migration note.
   const totals = useMemo(() => {
     let totalAmount = 0, totalPaid = 0, totalBalance = 0;
     for (const inv of invoices) {
@@ -110,15 +97,10 @@ export default function StudentFeesPage() {
       totalPaid += Number(inv.paid_amount);
       totalBalance += Number(inv.balance);
     }
-    for (const fee of legacyFees) {
-      totalAmount += Number(fee.amount);
-      if (fee.status === 'paid') totalPaid += Number(fee.amount);
-      else totalBalance += Number(fee.amount);
-    }
     return { totalAmount, totalPaid, totalBalance };
-  }, [invoices, legacyFees]);
+  }, [invoices]);
 
-  const student: any = invoices[0]?.student || legacyFees[0]?.student;
+  const student: any = invoices[0]?.student;
 
   const openPayment = (inv: FeeInvoice, componentAmount?: number, componentLabel?: string) => {
     setPaymentInvoice(inv);
@@ -324,40 +306,7 @@ export default function StudentFeesPage() {
               </div>
             )}
 
-            {/* Legacy Fees */}
-            {legacyFees.length > 0 && (
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase flex items-center gap-1.5">
-                  <CreditCard className="w-4 h-4" /> Fee Records ({legacyFees.length})
-                </h3>
-                <Card>
-                  <CardContent className="p-0 divide-y divide-border/50">
-                    {legacyFees.map(fee => (
-                      <div key={fee.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/20">
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium text-sm">{fee.fee_type}</span>
-                          <span className="text-muted-foreground text-xs">Due: {new Date(fee.due_date).toLocaleDateString('en-IN')}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm">₹{Number(fee.amount).toLocaleString()}</span>
-                          {getStatusBadge(fee.status, fee.due_date)}
-                          {fee.status === 'paid' && fee.receipt_number && (
-                            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => {
-                              setLegacyReceiptFee({ ...fee, student: fee.student });
-                              setLegacyReceiptOpen(true);
-                            }}>
-                              <Receipt className="w-3 h-3 mr-1" /> {fee.receipt_number}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-
-            {invoices.length === 0 && legacyFees.length === 0 && (
+            {invoices.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
                 <AlertCircle className="w-12 h-12 mx-auto mb-4 opacity-50" />
                 <p className="font-medium">No fee records found for this student</p>
@@ -369,7 +318,6 @@ export default function StudentFeesPage() {
         {/* Dialogs */}
         <RecordPaymentDialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen} invoice={paymentInvoice} prefillAmount={paymentPrefillAmount} prefillLabel={paymentPrefillLabel} />
         <PaymentReceiptDialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen} payment={receiptPayment} invoice={receiptInvoice} />
-        <FeeReceiptDialog open={legacyReceiptOpen} onOpenChange={setLegacyReceiptOpen} fee={legacyReceiptFee} />
         <ApplyDiscountDialog open={discountDialogOpen} onOpenChange={setDiscountDialogOpen} invoice={discountInvoice} />
       </div>
     </AdminLayout>
