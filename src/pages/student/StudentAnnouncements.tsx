@@ -1,7 +1,7 @@
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Bell } from 'lucide-react';
-import { useStudentProfile, useStudentAnnouncements } from '@/hooks/useStudentData';
+import { useStudentAnnouncements } from '@/hooks/useStudentData';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
@@ -10,8 +10,7 @@ import { useTranslation } from 'react-i18next';
 export default function StudentAnnouncements() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { data: student } = useStudentProfile();
-  const { data: announcements, isLoading } = useStudentAnnouncements(user?.schoolId, student?.class_name);
+  const { data: announcements, isLoading } = useStudentAnnouncements(user?.schoolId);
 
   return (
     <MobileLayout title={t('announcementsPage.title')} showBack>

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStudentProfile, useStudentAttendanceStats } from '@/hooks/useStudentData';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslation } from 'react-i18next';
@@ -66,14 +66,8 @@ export default function StudentProfile() {
                   <AvatarUpload
                     value={student?.avatar_url || user?.avatar}
                     onChange={async (url) => {
-                      if (user?.id) {
-                        await supabase.from('profiles').update({ avatar_url: url }).eq('id', user.id);
-                      }
-                      if (student?.id) {
-                        await supabase.from('students').update({ avatar_url: url }).eq('id', student.id);
-                      }
+                      await api.patch('/student/profile', { photo: url });
                       queryClient.invalidateQueries({ queryKey: ['student-profile'] });
-                      queryClient.invalidateQueries({ queryKey: ['profile-avatar'] });
                     }}
                     fallback={user?.name}
                     size="lg"
@@ -101,6 +95,10 @@ export default function StudentProfile() {
                     <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
                     <span>{user?.email}</span>
                   </div>
+                  {/* parent_phone/parent_name are always null post-migration — see
+                      useStudentData.ts's migration-notes comment. Left as-is
+                      since they're already null-guarded; will start rendering
+                      again if that data ever gets wired up. */}
                   {student?.parent_phone && (
                     <div className="flex items-center gap-3 text-sm">
                       <Phone className="w-4 h-4 text-muted-foreground shrink-0" />

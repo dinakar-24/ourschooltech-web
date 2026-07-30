@@ -1,82 +1,82 @@
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
-import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { Card, CardContent } from '@/components/ui/card';
 import { AdminStatCard } from '@/components/admin/AdminStatCard';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  ClipboardList, 
-  BookOpen, 
-  FileText, 
+import { api } from '@/lib/api';
+import {
+  ClipboardList,
+  BookOpen,
+  FileText,
   Bell,
   Users,
   ChevronRight,
   Clock,
   GraduationCap,
-  AlertCircle,
   BarChart3,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from a Supabase RPC (get_teacher_dashboard_stats) + two table
+// reads to /api/teacher/{profile,classes,homework}. The RPC's attendanceRate
+// stat is DROPPED, not ported — there's no Express aggregate for "today's
+// attendance rate across a teacher's classes" yet, and computing it
+// client-side would mean one request per section. Flagged for a future
+// backend-aggregate addition.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface RawTeacherHomework {
+  id: string;
+  title: string;
+  dueDate: string;
+  subject: { name: string };
+}
+
 export default function TeacherDashboard() {
-  const { user, school } = useAuth();
-  const schoolId = useEffectiveSchoolId();
+  const { user } = useAuth();
   const { t } = useTranslation();
 
-  const { data: stats, isLoading: loading } = useQuery({
-    queryKey: ['teacher-dashboard-stats', schoolId, user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_teacher_dashboard_stats', {
-        _school_id: schoolId,
-        _teacher_user_id: user!.id,
-      });
-      if (error) throw error;
-      const r = data as any;
-      return {
-        totalHomework: Number(r?.totalHomework ?? 0),
-        attendanceToday: Number(r?.attendanceRate ?? 0),
-      };
-    },
-    enabled: !!schoolId && !!user?.id,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Fetch teacher record for real class/subject counts
+  // Fetch teacher record for subjects
   const { data: teacher } = useQuery({
-    queryKey: ['teacher-record', user?.id, schoolId],
+    queryKey: ['teacher-record', user?.id],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('teachers')
-        .select('classes, subjects')
-        .eq('school_id', schoolId!)
-        .eq('user_id', user!.id)
-        .maybeSingle();
-      return data;
+      const { data } = await api.get<{ teacher: { subjects: string[] } }>('/teacher/profile');
+      return data.teacher;
     },
-    enabled: !!schoolId && !!user?.id,
+    enabled: !!user?.id,
     staleTime: 10 * 60 * 1000,
   });
 
-  // Fetch upcoming homework due
-  const { data: upcomingHomework } = useQuery({
-    queryKey: ['teacher-upcoming-hw', schoolId, user?.id],
+  // Fetch class count from timetable-derived sections
+  const { data: classCount = 0 } = useQuery({
+    queryKey: ['teacher-class-count', user?.id],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('homework')
-        .select('id, title, subject, due_date')
-        .eq('school_id', schoolId!)
-        .eq('assigned_by', user!.id)
-        .gte('due_date', new Date().toISOString().split('T')[0])
-        .order('due_date', { ascending: true })
-        .limit(4);
-      return data ?? [];
+      const { data } = await api.get<{ sections: Array<{ classId: string }> }>('/teacher/classes');
+      return new Set(data.sections.map(s => s.classId)).size;
     },
-    enabled: !!schoolId && !!user?.id,
+    enabled: !!user?.id,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  // Fetch homework (also used for the "posted" count and upcoming list)
+  const { data: homework, isLoading: loading } = useQuery({
+    queryKey: ['teacher-homework', user?.id],
+    queryFn: async () => {
+      const { data } = await api.get<{ homework: RawTeacherHomework[] }>('/teacher/homework');
+      return data.homework;
+    },
+    enabled: !!user?.id,
     staleTime: 5 * 60 * 1000,
   });
+
+  const totalHomework = homework?.length ?? 0;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const upcomingHomework = (homework ?? [])
+    .filter(hw => hw.dueDate.split('T')[0] >= todayStr)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 4);
 
   const greeting = () => {
     const hour = new Date().getHours();
@@ -96,7 +96,6 @@ export default function TeacherDashboard() {
     { label: t('nav.profile'), icon: GraduationCap, href: '/teacher/profile', color: 'bg-primary' },
   ];
 
-  const classCount = teacher?.classes?.length ?? 0;
   const subjectCount = teacher?.subjects?.length ?? 0;
 
   return (
@@ -109,7 +108,7 @@ export default function TeacherDashboard() {
               {greeting()}, {user?.name?.split(' ')[0]}! 👋
             </h2>
             <p className="text-sm text-muted-foreground line-clamp-1">
-              {user?.subjects?.join(', ') || 'Teacher'}
+              {teacher?.subjects?.join(', ') || 'Teacher'}
             </p>
           </div>
           <div className="text-right shrink-0">
@@ -122,15 +121,9 @@ export default function TeacherDashboard() {
         <div className="grid grid-cols-2 gap-3">
           <AdminStatCard
             title={t('teacher.dashboard.homework')}
-            value={loading ? '...' : (stats?.totalHomework ?? 0).toLocaleString()}
+            value={loading ? '...' : totalHomework.toLocaleString()}
             subtitle={t('teacher.dashboard.posted')}
             icon={<BookOpen className="w-4 h-4" />}
-          />
-          <AdminStatCard
-            title={t('teacher.dashboard.attendance')}
-            value={loading ? '...' : `${stats?.attendanceToday ?? 0}%`}
-            subtitle={t('common.today')}
-            icon={<ClipboardList className="w-4 h-4" />}
           />
           <AdminStatCard
             title="Subjects"
@@ -182,7 +175,7 @@ export default function TeacherDashboard() {
                       </div>
                       <div>
                         <span className="text-sm font-medium text-foreground line-clamp-1">{hw.title}</span>
-                        <p className="text-xs text-muted-foreground">{hw.subject} · Due {hw.due_date}</p>
+                        <p className="text-xs text-muted-foreground">{hw.subject.name} · Due {hw.dueDate.split('T')[0]}</p>
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />

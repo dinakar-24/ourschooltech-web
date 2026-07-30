@@ -1,6 +1,42 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+
+// ─────────────────────────────────────────────────────────────────────────
+// useStudentProfile, useStudentAttendanceStats, useStudentAnnouncements
+// migrated to /api/student/{profile,attendance,announcements}.
+// useStudentHomework and useStudentResults below are untouched Supabase —
+// out of scope for this batch, no batch assigned to them yet.
+//
+// Parent contact fields (parent_name/parent_phone/parent_email/
+// alternate_phone) are dropped from useStudentProfile's return, not
+// fabricated: Student has no such columns — that data lives on the related
+// Parent record. GET /api/student/profile does already include a `parents`
+// relation, so this is wireable later if wanted; same "flag it, don't
+// guess" pattern as alternate_phone in the Parent batch.
+//
+// useStudentAnnouncements previously took a `className` param to filter by
+// `target_classes` client-side; Announcement has no target_classes (or
+// is_active) column in the current schema, so that filtering is gone along
+// with the param — GET /api/student/announcements already scopes to
+// targetRole IS NULL OR 'STUDENT' server-side.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface RawStudentProfile {
+  id: string;
+  schoolId: string;
+  firstName: string;
+  lastName: string;
+  rollNo: string | null;
+  admissionNo: string;
+  photo: string | null;
+  dob: string;
+  gender: string;
+  bloodGroup: string | null;
+  address: string | null;
+  section: { name: string; class: { name: string } };
+}
 
 export interface StudentProfile {
   id: string;
@@ -35,16 +71,35 @@ export function useStudentProfile() {
   return useQuery({
     queryKey: ['student-profile', user?.id],
     queryFn: async (): Promise<StudentProfile | null> => {
-      if (!user?.id) return null;
+      try {
+        const { data } = await api.get<{ student: RawStudentProfile }>('/student/profile');
+        const s = data.student;
 
-      const { data, error } = await supabase
-        .from('students')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      return data as StudentProfile | null;
+        return {
+          id: s.id,
+          full_name: `${s.firstName} ${s.lastName}`.trim(),
+          class_name: s.section?.class?.name ?? '',
+          section: s.section?.name ?? '',
+          roll_number: s.rollNo ? Number(s.rollNo) || null : null,
+          admission_number: s.admissionNo,
+          school_id: s.schoolId,
+          avatar_url: s.photo,
+          parent_name: null,
+          parent_phone: null,
+          parent_email: null,
+          alternate_phone: null,
+          date_of_birth: s.dob,
+          gender: s.gender,
+          blood_group: s.bloodGroup,
+          address: s.address,
+        };
+      } catch (err: any) {
+        // No Student row linked to this user yet — StudentProfile/
+        // StudentDashboard both render a "profile not linked" state for
+        // this, same as the old PGRST116 (no rows) handling.
+        if (err.response?.status === 404) return null;
+        throw err;
+      }
     },
     enabled: !!user?.id,
     staleTime: 10 * 60 * 1000,
@@ -58,26 +113,8 @@ export function useStudentAttendanceStats(studentId?: string) {
     queryFn: async (): Promise<StudentAttendanceStats> => {
       if (!studentId) throw new Error('No student ID');
 
-      // Get current month's attendance
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
-
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('status')
-        .eq('student_id', studentId)
-        .gte('date', startOfMonthStr);
-
-      if (error) throw error;
-
-      const present = data?.filter(a => a.status === 'present').length || 0;
-      const absent = data?.filter(a => a.status === 'absent').length || 0;
-      const late = data?.filter(a => a.status === 'late').length || 0;
-      const total = data?.length || 0;
-      const percentage = total > 0 ? Math.round(((present + late) / total) * 100 * 10) / 10 : 0;
-
-      return { present, absent, late, total, percentage };
+      const { data } = await api.get<{ summary: StudentAttendanceStats }>('/student/attendance');
+      return data.summary;
     },
     enabled: !!studentId,
     staleTime: 2 * 60 * 1000,
@@ -147,26 +184,20 @@ export function useStudentResults(studentId?: string) {
   });
 }
 
-export function useStudentAnnouncements(schoolId?: string, className?: string) {
+export function useStudentAnnouncements(schoolId?: string) {
   return useQuery({
-    queryKey: ['student-announcements', schoolId, className],
+    queryKey: ['student-announcements', schoolId],
     queryFn: async () => {
-      if (!schoolId) return [];
+      const { data } = await api.get<{
+        announcements: { id: string; title: string; content: string; createdAt: string }[];
+      }>('/student/announcements');
 
-      const { data, error } = await supabase
-        .from('announcements')
-        .select('id,title,content,target_classes,created_at,image_url,is_active,school_id')
-        .eq('school_id', schoolId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-      
-      // Filter by target class if specified
-      return data?.filter(a => 
-        !a.target_classes || a.target_classes.length === 0 || a.target_classes.includes(className)
-      ) || [];
+      return data.announcements.map(a => ({
+        id: a.id,
+        title: a.title,
+        content: a.content,
+        created_at: a.createdAt,
+      }));
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,

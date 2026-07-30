@@ -5,8 +5,7 @@ import {
   ImageIcon, Bus, Video, ChevronRight, Clock, Megaphone,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useStudentProfile, useStudentAttendanceStats, useStudentHomework } from '@/hooks/useStudentData';
-import { useAnnouncements } from '@/hooks/useAnnouncements';
+import { useStudentProfile, useStudentAttendanceStats, useStudentHomework, useStudentAnnouncements } from '@/hooks/useStudentData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +22,11 @@ export default function StudentDashboard() {
   const { data: student, isLoading: studentLoading } = useStudentProfile();
   const { data: attendanceStats, isLoading: attendanceLoading } = useStudentAttendanceStats(student?.id);
   const { data: homework, isLoading: homeworkLoading } = useStudentHomework(student?.class_name, student?.section, student?.school_id);
-  const { data: announcementsData, isLoading: announcementsLoading } = useAnnouncements({ status: 'active', pageSize: 3 });
+  // Was the shared admin useAnnouncements() hook — that returns every active
+  // announcement school-wide with no role/class targeting, so a student saw
+  // teacher-only notices too. useStudentAnnouncements hits the endpoint that
+  // already scopes to targetRole IS NULL OR 'STUDENT' server-side.
+  const { data: announcements, isLoading: announcementsLoading } = useStudentAnnouncements(student?.school_id);
 
   const studentInfo = student ? {
     name: student.full_name,
@@ -39,7 +42,6 @@ export default function StudentDashboard() {
 
   const attendance = attendanceStats?.percentage || 0;
   const pendingHomework = homework?.length || 0;
-  const announcements = announcementsData?.data || [];
 
   return (
     <MobileLayout>
@@ -101,7 +103,7 @@ export default function StudentDashboard() {
         />
 
         <AnnouncementsSection
-          announcements={announcements}
+          announcements={announcements ?? []}
           announcementsLoading={announcementsLoading}
           t={t}
         />
