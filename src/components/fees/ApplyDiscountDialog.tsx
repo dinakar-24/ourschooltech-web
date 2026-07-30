@@ -8,8 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { useApplyDiscount } from '@/hooks/useFeeInvoices';
 import { FeeInvoice } from '@/hooks/useFeeInvoices';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Props {
@@ -21,7 +20,6 @@ interface Props {
 const REASONS = ['Scholarship', 'Sibling Discount', 'Staff Ward', 'Financial Aid', 'Merit-Based', 'Other'];
 
 export function ApplyDiscountDialog({ open, onOpenChange, invoice }: Props) {
-  const { user } = useAuth();
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
@@ -48,27 +46,31 @@ export function ApplyDiscountDialog({ open, onOpenChange, invoice }: Props) {
   };
 
   const handleSubmit = async () => {
-    if (!isValid || !invoice || !user?.email) return;
+    // No email precondition any more: verify-password identifies the caller
+    // from their access token, so the old `user?.email` requirement (needed
+    // only to feed signInWithPassword) would just block submission for no
+    // reason.
+    if (!isValid || !invoice) return;
 
-    // Verify admin password first
+    // Verify admin password first.
+    //
+    // Migrated from supabase.auth.signInWithPassword, which always errors now
+    // that auth lives on Express — that made this gate fail closed and blocked
+    // discounts entirely. verify-password checks the caller's own hash and
+    // issues no tokens. Same shape as the SchoolsPage / DeleteSchoolDialog gates.
     setVerifying(true);
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password,
-      });
-
-      if (authError) {
-        toast.error('Incorrect password. Please try again.');
-        setVerifying(false);
-        return;
-      }
-    } catch {
-      toast.error('Password verification failed');
-      setVerifying(false);
+      await api.post('/auth/verify-password', { password });
+    } catch (err: any) {
+      toast.error(
+        err?.response?.status === 401
+          ? 'Incorrect password. Please try again.'
+          : err?.response?.data?.error || 'Password verification failed'
+      );
       return;
+    } finally {
+      setVerifying(false);
     }
-    setVerifying(false);
 
     // Apply discount after verification
     applyDiscount.mutate(

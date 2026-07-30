@@ -332,11 +332,16 @@ export function useApplyDiscount() {
 
       // Replaces the apply_fee_discount RPC. The endpoint recomputes
       // dueAmount and status server-side in one update.
-      // ⚠️ `notes` has no column on FeeInvoice — the backend logs the reason
-      // rather than persisting it. Needs an audit/notes column to survive.
+      //
+      // `reason` and `notes` are persisted on an AuditLog row rather than on
+      // FeeInvoice (which has no columns for them) — so both survive, they
+      // just live in the audit trail. An earlier version of this comment said
+      // notes couldn't be persisted and dropped the field; that predated the
+      // AuditLog write being added to applyDiscount.
       const { data } = await api.post(`/school/fees/invoices/${params.invoice_id}/discount`, {
         amount: params.discount_amount,
         reason: params.reason,
+        notes: params.notes || null,
       });
       return data.invoice;
     },
