@@ -1,6 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
+
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from a Supabase RPC (get_admin_attendance_by_class) to
+// /api/school/attendance/by-class. That RPC did the grouping server-side;
+// the Express endpoint does the same (group by class across all of a
+// class's sections, not just one), so this hook stays a thin passthrough +
+// rename, same as before.
+// ─────────────────────────────────────────────────────────────────────────
 
 interface ClassAttendance {
   class: string;
@@ -12,6 +20,25 @@ interface ClassAttendance {
   percentage: number;
 }
 
+interface RawClassAttendance {
+  classId: string;
+  className: string;
+  present: number;
+  absent: number;
+  late: number;
+  halfDay: number;
+  total: number;
+  percentage: number;
+}
+
+interface RawTotals {
+  present: number;
+  absent: number;
+  late: number;
+  halfDay: number;
+  total: number;
+}
+
 export function useAdminAttendance(date: Date) {
   const schoolId = useEffectiveSchoolId();
   const dateStr = date.toISOString().split('T')[0];
@@ -19,35 +46,28 @@ export function useAdminAttendance(date: Date) {
   return useQuery({
     queryKey: ['admin-attendance', schoolId, dateStr],
     queryFn: async () => {
-      if (!schoolId) return { classWise: [], totals: { present: 0, absent: 0, late: 0, half_day: 0, total: 0 } };
+      const { data } = await api.get<{ classWise: RawClassAttendance[]; totals: RawTotals }>(
+        '/school/attendance/by-class',
+        { params: { date: dateStr } }
+      );
 
-      const { data, error } = await supabase.rpc('get_admin_attendance_by_class' as any, {
-        _school_id: schoolId,
-        _date: dateStr,
-      } as any);
-
-      if (error) throw error;
-
-      const result = data as any;
-      const classWise: ClassAttendance[] = (result?.classWise || []).map((c: any) => ({
-        class: c.class_name,
-        present: Number(c.present ?? 0),
-        absent: Number(c.absent ?? 0),
-        late: Number(c.late ?? 0),
-        half_day: Number(c.half_day ?? 0),
-        total: Number(c.total ?? 0),
-        percentage: Number(c.percentage ?? 0),
+      const classWise: ClassAttendance[] = data.classWise.map((c) => ({
+        class: c.className,
+        present: c.present,
+        absent: c.absent,
+        late: c.late,
+        half_day: c.halfDay,
+        total: c.total,
+        percentage: c.percentage,
       }));
 
-      const totals = result?.totals
-        ? {
-            present: Number(result.totals.present ?? 0),
-            absent: Number(result.totals.absent ?? 0),
-            late: Number(result.totals.late ?? 0),
-            half_day: Number(result.totals.half_day ?? 0),
-            total: Number(result.totals.total ?? 0),
-          }
-        : { present: 0, absent: 0, late: 0, half_day: 0, total: 0 };
+      const totals = {
+        present: data.totals.present,
+        absent: data.totals.absent,
+        late: data.totals.late,
+        half_day: data.totals.halfDay,
+        total: data.totals.total,
+      };
 
       return { classWise, totals };
     },
