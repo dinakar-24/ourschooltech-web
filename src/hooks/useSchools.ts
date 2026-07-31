@@ -44,6 +44,10 @@ export interface SchoolFormData {
   logo: string;
   primary_color: string;
   accent_color: string;
+  adminFirstName: string;
+  adminLastName: string;
+  adminEmail: string;
+  adminPassword: string;
 }
 
 interface SchoolFilters {
@@ -174,44 +178,37 @@ export function useSchoolCities() {
   });
 }
 
-/**
- * ⚠️ NOT MIGRATED — still on Supabase, and therefore currently broken by the
- * same RLS/session issue as everything else.
- *
- * POST /api/superadmin/schools requires `adminEmail` + `adminPassword` (it
- * creates the school and its first admin in one transaction), but the
- * create-school form collects neither. Wiring it up needs either a UI change
- * to collect admin credentials, or a backend change making them optional —
- * which would leave schools with no administrator. Needs a decision before
- * migrating; left as-is rather than silently broken in a new way.
- */
 export function useCreateSchool() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (formData: SchoolFormData & { logoPreview?: string | null }) => {
-      const schoolData: Record<string, unknown> = {
+      // ⚠️ Same gap as updateSchool(): POST /superadmin/schools has no `logo`
+      // or `accentColor` in its destructure, so those two fields are
+      // collected by the form but silently dropped server-side today.
+      // Extending createSchool() is the fix; not done here since it's a
+      // separate, pre-existing issue from the admin-account gap this
+      // migration is closing.
+      void formData.logoPreview;
+      void formData.logo;
+      void formData.accent_color;
+
+      const { data } = await api.post('/superadmin/schools', {
         name: formData.name,
-        code: formData.code,
+        schoolCode: formData.code,
         subdomain: formData.subdomain,
         address: formData.address,
         city: formData.city,
         phone: formData.phone || null,
         email: formData.email || null,
-        logo: formData.logoPreview || formData.logo || null,
-        primary_color: formData.primary_color || '#0F766E',
-        accent_color: formData.accent_color || '#E69500',
-        is_active: true,
-      };
+        primaryColor: formData.primary_color || '#0F766E',
+        adminFirstName: formData.adminFirstName,
+        adminLastName: formData.adminLastName,
+        adminEmail: formData.adminEmail,
+        adminPassword: formData.adminPassword,
+      });
 
-      const { data, error } = await supabase
-        .from('schools')
-        .insert(schoolData as any)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      return data.school;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schools'] });
@@ -219,8 +216,8 @@ export function useCreateSchool() {
       queryClient.invalidateQueries({ queryKey: ['school-cities'] });
       toast.success('School added successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to add school');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || error?.message || 'Failed to add school');
     },
   });
 }

@@ -9,9 +9,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Upload, X, Palette, Globe } from 'lucide-react';
+import { Upload, X, Palette, Globe, Eye, EyeOff, UserCog } from 'lucide-react';
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { Separator } from '@/components/ui/separator';
+import { validatePassword } from '@/lib/password-validation';
 
 interface SchoolFormData {
   name: string;
@@ -24,6 +25,10 @@ interface SchoolFormData {
   logo: string;
   primary_color: string;
   accent_color: string;
+  adminFirstName: string;
+  adminLastName: string;
+  adminEmail: string;
+  adminPassword: string;
 }
 
 interface School {
@@ -71,6 +76,10 @@ const initialFormData: SchoolFormData = {
   logo: '',
   primary_color: '#0F766E',
   accent_color: '#E69500',
+  adminFirstName: '',
+  adminLastName: '',
+  adminEmail: '',
+  adminPassword: '',
 };
 
 export const SchoolFormDialog = memo(function SchoolFormDialog({
@@ -83,6 +92,7 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
   const [formData, setFormData] = useState<SchoolFormData>(initialFormData);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [autoSubdomain, setAutoSubdomain] = useState(true);
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -98,6 +108,12 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
           logo: editingSchool.logo || '',
           primary_color: editingSchool.primary_color || '#0F766E',
           accent_color: editingSchool.accent_color || '#E69500',
+          // Admin account is created once, at school-creation time — nothing
+          // to prefill or re-collect here.
+          adminFirstName: '',
+          adminLastName: '',
+          adminEmail: '',
+          adminPassword: '',
         });
         setLogoPreview(editingSchool.logo || null);
         setAutoSubdomain(false);
@@ -131,6 +147,15 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!editingSchool) {
+      const passwordError = validatePassword(formData.adminPassword);
+      if (passwordError) {
+        alert(passwordError);
+        return;
+      }
+    }
+
     await onSubmit(formData, logoPreview);
   };
 
@@ -248,7 +273,80 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
                 />
               </div>
             </div>
-            
+
+            {/* Administrator Account — created atomically with the school,
+                so this only applies when adding a new one. */}
+            {!editingSchool && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <UserCog className="w-4 h-4 text-muted-foreground" />
+                    <Label className="text-sm font-medium">Administrator Account</Label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="adminFirstName">First Name *</Label>
+                      <Input
+                        id="adminFirstName"
+                        value={formData.adminFirstName}
+                        onChange={(e) => handleFieldChange('adminFirstName', e.target.value)}
+                        placeholder="Jane"
+                        required
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="adminLastName">Last Name *</Label>
+                      <Input
+                        id="adminLastName"
+                        value={formData.adminLastName}
+                        onChange={(e) => handleFieldChange('adminLastName', e.target.value)}
+                        placeholder="Doe"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="adminEmail">Admin Email *</Label>
+                    <Input
+                      id="adminEmail"
+                      type="email"
+                      value={formData.adminEmail}
+                      onChange={(e) => handleFieldChange('adminEmail', e.target.value)}
+                      placeholder="admin@school.com"
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="adminPassword">Admin Password *</Label>
+                    <div className="relative">
+                      <Input
+                        id="adminPassword"
+                        type={showAdminPassword ? 'text' : 'password'}
+                        value={formData.adminPassword}
+                        onChange={(e) => handleFieldChange('adminPassword', e.target.value)}
+                        placeholder="Enter a strong password"
+                        className="pr-10"
+                        minLength={8}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminPassword(prev => !prev)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        tabIndex={-1}
+                      >
+                        {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Min 8 chars · uppercase · lowercase · number · special character
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* Theme Colors */}
             <Separator />
             <div className="space-y-3">

@@ -17,6 +17,7 @@ import { AvatarUpload } from '@/components/ui/avatar-upload';
 import { toast } from 'sonner';
 import { useCreateSchoolUser } from '@/hooks/useCreateSchoolUser';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { validatePassword } from '@/lib/password-validation';
 
 interface School {
   id: string;
@@ -28,15 +29,6 @@ interface CreateSchoolAdminDialogProps {
   schools: School[];
   onSuccess: () => void;
 }
-
-const validatePassword = (password: string): string | null => {
-  if (password.length < 8) return 'Password must be at least 8 characters';
-  if (!/[A-Z]/.test(password)) return 'Must contain an uppercase letter';
-  if (!/[a-z]/.test(password)) return 'Must contain a lowercase letter';
-  if (!/[0-9]/.test(password)) return 'Must contain a number';
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return 'Must contain a special character';
-  return null;
-};
 
 function AdminForm({ formData, update, handleSubmit, isCreating, schools, onClose }: {
   formData: { email: string; password: string; fullName: string; schoolId: string; phone: string };

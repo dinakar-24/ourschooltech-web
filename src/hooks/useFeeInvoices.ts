@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
@@ -14,7 +13,8 @@ import { queryKeys } from '@/lib/query-keys';
 // stay renderable by ParentFees, but no parent ever hits /api/school/*
 // (which is staff-only and would 403).
 //
-// useCreateInvoice is the one export still on Supabase — see its note.
+// All exports, including useCreateInvoice, now call Express — see its own
+// note for the feeStructureId FK relaxation that unblocked it.
 // ─────────────────────────────────────────────────────────────────────────
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -251,20 +251,11 @@ export function useInvoiceStats() {
 // ─── Create Invoice ──────────────────────────────────────────────────
 
 /**
- * ⚠️ NOT MIGRATED — BLOCKED on a required FK, still on Supabase.
- *
- * `POST /api/school/fees/invoices` builds its line items as
- * `FeeInvoiceItem { feeStructureId, name, amount }`, and `feeStructureId` is
- * a **required** relation. CreateInvoiceDialog collects `fee_type` as free
- * text with no fee-structure reference, so there is nothing to send.
- *
- * Two ways out, both outside this batch:
- *   - make `FeeInvoiceItem.feeStructureId` optional (schema migration), or
- *   - have the dialog pick from GET /school/fees/structures (a UI change,
- *     which the project rules exclude).
- *
- * Left on Supabase deliberately rather than shipping an endpoint call that
- * would fail its foreign key on every submit.
+ * Migrated to POST /api/school/fees/invoices. `FeeInvoiceItem.feeStructureId`
+ * is now optional (see its own comment in schema.prisma) — CreateInvoiceDialog
+ * collects `fee_type` as free text from a fixed vocabulary with no
+ * fee-structure reference, so components map straight through as item names
+ * with no feeStructureId sent at all.
  */
 export function useCreateInvoice() {
   const queryClient = useQueryClient();
@@ -277,39 +268,25 @@ export function useCreateInvoice() {
       components: { fee_type: string; amount: number }[];
     }) => {
       if (!schoolId) throw new Error('No school ID');
-      const totalAmount = invoiceData.components.reduce((s, c) => s + c.amount, 0);
 
-      const { data: invoice, error: invErr } = await supabase
-        .from('fee_invoices')
-        .insert({
-          school_id: schoolId,
-          student_id: invoiceData.student_id,
-          total_amount: totalAmount,
-          paid_amount: 0,
-          balance: totalAmount,
-          status: 'pending',
-          due_date: invoiceData.due_date,
-        } as any)
-        .select()
-        .single();
+      const { data } = await api.post('/school/fees/invoices', {
+        studentId: invoiceData.student_id,
+        dueDate: invoiceData.due_date,
+        items: invoiceData.components.map(c => ({
+          name: c.fee_type,
+          amount: c.amount,
+        })),
+      });
 
-      if (invErr) throw invErr;
-
-      const comps = invoiceData.components.map((c) => ({
-        invoice_id: invoice.id,
-        fee_type: c.fee_type,
-        amount: c.amount,
-      }));
-
-      const { error: compErr } = await supabase.from('fee_invoice_components').insert(comps);
-      if (compErr) throw compErr;
-
-      return invoice;
+      return data.invoice;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allFeeInvoices });
       queryClient.invalidateQueries({ queryKey: queryKeys.allInvoiceStats });
       toast.success('Invoice created');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to create invoice');
     },
   });
 }
