@@ -1,24 +1,34 @@
 import { useEffect, createContext, useContext } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
-/**
- * ⚠️ NOT MIGRATED — BLOCKED on two separate gaps.
- *
- * 1. Platform theme — reads the `system_settings` table (key = 'theme').
- *    There is no SystemSettings Prisma model and no endpoint. Nothing to
- *    migrate to. (Also blocks hooks/useSystemSettings.ts.)
- *
- * 2. School theme — GET /api/auth/me already returns the user's school with
- *    `primaryColor`, so half of this could move today. But `accentColor` was
- *    only just added to the School model and is not yet exposed by /auth/me,
- *    and migrating primary alone would apply a school's primary against the
- *    platform's accent. Deferred so both move together.
- *
- * Note: TenantContext.applyTenantBranding() also writes --primary/--accent,
- * from the (now Express-backed) subdomain resolve. On a subdomain both run and
- * whichever resolves last wins. Worth reconciling when this file migrates.
- */
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from Supabase to two sources:
+//
+// 1. Platform theme (fallback for super admin / no school / pre-login) —
+//    GET /api/settings/theme. Public, no auth — this provider mounts above
+//    AuthProvider in App.tsx.
+//
+// 2. School theme — GET /auth/me directly, NOT useAuth(). ThemeProvider
+//    sits ABOVE AuthProvider in App.tsx's tree (wraps BrowserRouter, which
+//    is where AuthProvider lives), so it is not a descendant and calling
+//    useAuth() here would read no context, not real auth state. /auth/me
+//    already returns the full School row (Prisma's `school: true` include),
+//    so this reads primaryColor/accentColor straight from it. 401 pre-login
+//    is expected and just means "no school theme yet" — falls through to
+//    the platform theme below, not an error.
+//
+// Note: TenantContext.applyTenantBranding() also writes --primary/--accent,
+// from the (Express-backed) subdomain resolve. On a subdomain both run and
+// whichever resolves last wins — unchanged from before this migration,
+// still worth reconciling separately.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface AuthMeResponse {
+  user: {
+    school?: { primaryColor?: string | null; accentColor?: string | null } | null;
+  };
+}
 
 interface ThemeColors {
   primary_color: string;
@@ -101,57 +111,28 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { data: platformTheme } = useQuery({
     queryKey: ['system-settings', 'theme-colors'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('system_settings' as any)
-        .select('value')
-        .eq('key', 'theme')
-        .maybeSingle();
-      if (error) throw error;
-      return (data as any)?.value as ThemeColors | null;
+      const { data } = await api.get<{ theme: ThemeColors }>('/settings/theme');
+      return data.theme;
     },
     staleTime: 5 * 60 * 1000,
   });
 
-  // Fetch the current user's school colors
+  // Fetch the current user's school colors directly — can't use useAuth()
+  // here, see the migration note above.
   const { data: schoolTheme } = useQuery({
     queryKey: ['school-theme-colors'],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      // Get user's school_id from profile
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('school_id')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (!profile?.school_id) return null;
-
-      const { data: school } = await supabase
-        .from('schools')
-        .select('primary_color, accent_color')
-        .eq('id', profile.school_id)
-        .maybeSingle();
-
-      if (!school) return null;
-      return {
-        primary_color: (school as any).primary_color || null,
-        accent_color: (school as any).accent_color || null,
-      };
+    queryFn: async (): Promise<ThemeColors | null> => {
+      const { data } = await api.get<AuthMeResponse>('/auth/me');
+      const s = data.user.school;
+      if (!s?.primaryColor || !s?.accentColor) return null;
+      return { primary_color: s.primaryColor, accent_color: s.accentColor };
     },
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 
   // School colors take priority over platform colors
-  const activeTheme: ThemeColors | null = (() => {
-    // If user has school colors, use those
-    if (schoolTheme?.primary_color && schoolTheme?.accent_color) {
-      return schoolTheme as ThemeColors;
-    }
-    // Fall back to platform theme
-    return platformTheme || null;
-  })();
+  const activeTheme: ThemeColors | null = schoolTheme || platformTheme || null;
 
   useEffect(() => {
     if (!activeTheme) return;

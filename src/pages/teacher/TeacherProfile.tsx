@@ -32,9 +32,8 @@ import {
 // approach as TeacherDashboard.tsx, so both pages report the same number
 // for the same teacher.
 //
-// "joining_date"/"Since" is still NOT wired up: Teacher has no such column
-// at all, under any name. Could fall back to createdAt or get a real column
-// added (mirrors the Teacher.subjects precedent) — shows '-' until decided.
+// "Since" now reads Teacher.joiningDate (added mirroring the subjects/photo
+// precedent) instead of showing '-'.
 // ─────────────────────────────────────────────────────────────────────────
 
 interface RawTeacherProfile {
@@ -46,6 +45,7 @@ interface RawTeacherProfile {
   photo: string | null;
   qualification: string | null;
   subjects: string[];
+  joiningDate: string | null;
 }
 
 export default function TeacherProfile() {
@@ -167,9 +167,10 @@ export default function TeacherProfile() {
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
-              {/* No joining-date column exists on Teacher under any name — see migration-notes comment above */}
               {isLoading ? <Skeleton className="h-8 w-8 mx-auto" /> : (
-                <p className="text-2xl font-bold text-warning">-</p>
+                <p className="text-2xl font-bold text-warning">
+                  {teacher?.joiningDate ? new Date(teacher.joiningDate).getFullYear() : '-'}
+                </p>
               )}
               <p className="text-xs text-muted-foreground">Since</p>
             </CardContent>

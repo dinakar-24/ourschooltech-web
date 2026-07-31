@@ -29,6 +29,11 @@ export interface School {
   city: string;
   phone?: string;
   email?: string;
+  // Added for ThemeProvider's school-theme half — /auth/me already returns
+  // these (Prisma's `school: true` include pulls every scalar column), they
+  // just weren't threaded through mapSchool until now.
+  primaryColor?: string;
+  accentColor?: string;
 }
 
 export interface User {
@@ -95,6 +100,7 @@ interface RawAuthUser {
     schoolCode?: string;
     logo?: string | null;
     primaryColor?: string;
+    accentColor?: string;
     address?: string | null;
     city?: string | null;
     phone?: string | null;

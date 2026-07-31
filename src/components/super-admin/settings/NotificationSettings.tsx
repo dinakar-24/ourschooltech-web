@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Bell, Mail, MessageSquare, Loader2, Key, Eye, EyeOff, ShieldCheck, Save } from 'lucide-react';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -29,7 +29,10 @@ export function NotificationSettings() {
   const [notif, setNotif] = useState(NOTIF_FALLBACK);
   const [email, setEmail] = useState(EMAIL_FALLBACK);
   const [sms, setSms] = useState(SMS_FALLBACK);
-  const [api, setApi] = useState(API_FALLBACK);
+  // Named apiIntegrations, not api, to avoid shadowing the imported axios
+  // client used a few lines down in confirmSave — that collision used to
+  // make `api.post(...)` there resolve to this state object instead.
+  const [apiIntegrations, setApiIntegrations] = useState(API_FALLBACK);
 
   // Password dialog state
   const [pendingSave, setPendingSave] = useState<{ key: string; value: Record<string, any>; label: string } | null>(null);
@@ -42,7 +45,7 @@ export function NotificationSettings() {
       setNotif(getSetting('notifications', NOTIF_FALLBACK));
       setEmail(getSetting('email_config', EMAIL_FALLBACK));
       setSms(getSetting('sms_config', SMS_FALLBACK));
-      setApi(getSetting('api_integrations', API_FALLBACK));
+      setApiIntegrations(getSetting('api_integrations', API_FALLBACK));
     }
   }, [isLoading]);
 
@@ -62,36 +65,22 @@ export function NotificationSettings() {
 
     setVerifying(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user?.email) {
-        toast.error('Unable to verify identity');
-        return;
-      }
-
-      // ⚠️ Gate deliberately NOT migrated yet. POST /auth/verify-password
-      // exists, but the save it guards writes through useSystemSettings, which
-      // has no Express equivalent (there is no SystemSetting Prisma model).
-      // Fixing only the gate would move the failure one step later instead of
-      // resolving it. Migrate both together.
-      const { error } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password,
-      });
-
-      if (error) {
-        toast.error('Incorrect password. Please try again.');
-        return;
-      }
-
-      // Password verified, save the setting
-      updateSetting.mutate({ key: pendingSave.key, value: pendingSave.value });
-      setPendingSave(null);
-      setPassword('');
-    } catch {
-      toast.error('Verification failed');
-    } finally {
+      await api.post('/auth/verify-password', { password });
+    } catch (err: any) {
+      toast.error(
+        err?.response?.status === 401
+          ? 'Incorrect password. Please try again.'
+          : err?.response?.data?.error || 'Verification failed'
+      );
       setVerifying(false);
+      return;
     }
+    setVerifying(false);
+
+    // Password verified, save the setting
+    updateSetting.mutate({ key: pendingSave.key, value: pendingSave.value });
+    setPendingSave(null);
+    setPassword('');
   }, [pendingSave, password, updateSetting]);
 
   const handleClose = useCallback(() => {
@@ -247,18 +236,18 @@ export function NotificationSettings() {
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Razorpay Key ID</Label>
-              <Input type="password" value={api.razorpay_key_id} onChange={(e) => setApi(s => ({ ...s, razorpay_key_id: e.target.value }))} placeholder="••••••••" className="h-9" />
+              <Input type="password" value={apiIntegrations.razorpay_key_id} onChange={(e) => setApiIntegrations(s => ({ ...s, razorpay_key_id: e.target.value }))} placeholder="••••••••" className="h-9" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Razorpay Key Secret</Label>
-              <Input type="password" value={api.razorpay_key_secret} onChange={(e) => setApi(s => ({ ...s, razorpay_key_secret: e.target.value }))} placeholder="••••••••" className="h-9" />
+              <Input type="password" value={apiIntegrations.razorpay_key_secret} onChange={(e) => setApiIntegrations(s => ({ ...s, razorpay_key_secret: e.target.value }))} placeholder="••••••••" className="h-9" />
             </div>
           </div>
           <p className="text-xs text-muted-foreground">Payment keys are managed via environment secrets for security. Contact the developer to update.</p>
           <Button
             size="sm"
             disabled={saving}
-            onClick={() => requestSave('api_integrations', api, 'API & Integrations')}
+            onClick={() => requestSave('api_integrations', apiIntegrations, 'API & Integrations')}
           >
             <Save className="w-3.5 h-3.5 mr-1.5" />
             Save API Settings
