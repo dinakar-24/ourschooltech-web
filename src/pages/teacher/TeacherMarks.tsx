@@ -19,10 +19,19 @@ import {
 } from 'lucide-react';
 import { useExams, useExamResults } from '@/hooks/useExams';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
+
+interface RawClassStudent {
+  id: string;
+  firstName: string;
+  lastName: string;
+  rollNo: string | null;
+  admissionNo: string;
+  section?: { class?: { name: string } };
+}
 
 export default function TeacherMarks() {
   const schoolId = useEffectiveSchoolId();
@@ -47,18 +56,20 @@ export default function TeacherMarks() {
 
   // Fetch students for the selected exam's class
   const { data: students = [], isLoading: studentsLoading } = useQuery({
-    queryKey: ['class-students', schoolId, selectedExam?.class_name],
+    queryKey: ['class-students', schoolId, selectedExam?.class_id],
     queryFn: async () => {
       if (!schoolId || !selectedExam) return [];
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, full_name, roll_number, admission_number')
-        .eq('school_id', schoolId)
-        .eq('class_name', selectedExam.class_name)
-        .eq('status', 'active')
-        .order('roll_number', { ascending: true });
-      if (error) throw error;
-      return data || [];
+      const { data } = await api.get<{ students: RawClassStudent[] }>('/school/students', {
+        params: { classId: selectedExam.class_id, status: 'active', limit: 500 },
+      });
+      return data.students
+        .map(s => ({
+          id: s.id,
+          full_name: `${s.firstName} ${s.lastName}`,
+          roll_number: s.rollNo,
+          admission_number: s.admissionNo,
+        }))
+        .sort((a, b) => (a.roll_number || '').localeCompare(b.roll_number || '', undefined, { numeric: true }));
     },
     enabled: !!schoolId && !!selectedExam,
   });
@@ -87,29 +98,19 @@ export default function TeacherMarks() {
     setLocalMarks(prev => ({ ...prev, [id]: Math.min(Math.max(numValue, 0), maxMarks) }));
   };
 
-  // Bulk save mutation
+  // Bulk save mutation — server does the delete-then-reinsert + notification
+  // fanout to the student and their parent(s) in one call.
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!selectedExamId || students.length === 0) throw new Error('No exam selected');
 
       const records = students.map(s => ({
-        exam_id: selectedExamId,
-        student_id: s.id,
-        marks_obtained: getMarks(s.id),
+        studentId: s.id,
+        marksObtained: getMarks(s.id),
         grade: getGrade(getMarks(s.id)).label,
       }));
 
-      // Upsert: delete existing and insert fresh
-      const { error: delError } = await supabase
-        .from('results')
-        .delete()
-        .eq('exam_id', selectedExamId);
-      if (delError) throw delError;
-
-      const { error: insError } = await supabase
-        .from('results')
-        .insert(records);
-      if (insError) throw insError;
+      await api.post(`/school/exams/${selectedExamId}/results`, { records });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exam-results', selectedExamId] });

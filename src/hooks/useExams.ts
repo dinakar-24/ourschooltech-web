@@ -1,16 +1,39 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
-import { getSupabaseRange } from './usePagination';
-import { sendNotification } from '@/lib/send-notification';
+
+// ─────────────────────────────────────────────────────────────────────────
+// Migrated from Supabase to /api/school/exams. The Exam/Result Prisma models
+// (added by an earlier, unrelated session/batch) didn't match what
+// ExamsPage.tsx/TeacherMarks.tsx/ParentResults.tsx actually need — subject
+// lived on Result as a FK to the Subject table, but the admin UI's "subject"
+// is a fixed string picker, not a Subject relation; Exam itself had no
+// class/subject/max-marks/single-date at all. Reshaped Exam to carry
+// classId/subject/examDate/maxMarks directly (one exam = one class + one
+// subject, matching the real product) and dropped the now-redundant
+// per-Result subjectId/maxMarks — see the schema comment on Exam.
+//
+// Marks entry (POST /school/exams/:id/results, used by TeacherMarks.tsx) has
+// no per-teacher class/subject scoping on the server, matching the existing
+// markAttendance precedent — not a new restriction, not a new gap either.
+//
+// `useSaveResult` (single-record save) from the original file had zero
+// callers — TeacherMarks.tsx always did its own bulk delete-then-reinsert
+// directly against Supabase — so it's dropped here rather than ported
+// forward as dead code. TeacherMarks.tsx now calls the bulk endpoint
+// directly.
+// ─────────────────────────────────────────────────────────────────────────
 
 export interface Exam {
   id: string;
   name: string;
   subject: string;
   class_name: string;
+  // Additive — the old flat Supabase shape had no class id at all (just the
+  // name string). TeacherMarks.tsx needs the real id to fetch that class's
+  // roster via /school/students?classId=.
+  class_id: string;
   exam_date: string;
   max_marks: number;
   school_id: string;
@@ -53,6 +76,58 @@ export interface PaginatedExams {
   totalCount: number;
 }
 
+interface RawExam {
+  id: string;
+  schoolId: string;
+  classId: string;
+  subject: string;
+  name: string;
+  examDate: string;
+  maxMarks: number;
+  createdAt: string;
+  class?: { name: string } | null;
+}
+
+interface RawExamResult {
+  id: string;
+  examId: string;
+  studentId: string;
+  marks: number;
+  grade: string | null;
+  remarks: string | null;
+  createdAt: string;
+  student?: { firstName: string; lastName: string; admissionNo: string };
+}
+
+function mapExam(raw: RawExam): Exam {
+  return {
+    id: raw.id,
+    name: raw.name,
+    subject: raw.subject,
+    class_name: raw.class?.name || '',
+    class_id: raw.classId,
+    exam_date: raw.examDate.split('T')[0],
+    max_marks: Number(raw.maxMarks),
+    school_id: raw.schoolId,
+    created_at: raw.createdAt,
+  };
+}
+
+function mapResult(raw: RawExamResult): ExamResult {
+  return {
+    id: raw.id,
+    exam_id: raw.examId,
+    student_id: raw.studentId,
+    marks_obtained: Number(raw.marks),
+    grade: raw.grade,
+    remarks: raw.remarks,
+    created_at: raw.createdAt,
+    student: raw.student
+      ? { full_name: `${raw.student.firstName} ${raw.student.lastName}`, admission_number: raw.student.admissionNo }
+      : undefined,
+  };
+}
+
 export function useExams(filters?: ExamFilters) {
   const schoolId = useEffectiveSchoolId();
   const page = filters?.page || 1;
@@ -61,40 +136,14 @@ export function useExams(filters?: ExamFilters) {
   return useQuery({
     queryKey: ['exams', schoolId, filters],
     queryFn: async (): Promise<PaginatedExams> => {
-      if (!schoolId) throw new Error('No school ID');
+      const params: Record<string, string | number> = { page, pageSize };
+      if (filters?.className && filters.className !== 'All Classes') params.className = filters.className;
+      if (filters?.subject && filters.subject !== 'All Subjects') params.subject = filters.subject;
+      if (filters?.search) params.search = filters.search;
+      if (filters?.status && filters.status !== 'all') params.status = filters.status;
 
-      let query = supabase
-        .from('exams')
-        .select('*', { count: 'exact' })
-        .eq('school_id', schoolId)
-        .order('exam_date', { ascending: false });
-
-      if (filters?.className && filters.className !== 'All Classes') {
-        query = query.eq('class_name', filters.className);
-      }
-
-      if (filters?.subject && filters.subject !== 'All Subjects') {
-        query = query.eq('subject', filters.subject);
-      }
-
-      if (filters?.search) {
-        query = query.or(`name.ilike.%${filters.search}%,subject.ilike.%${filters.search}%`);
-      }
-
-      const today = new Date().toISOString().split('T')[0];
-      if (filters?.status === 'upcoming') {
-        query = query.gte('exam_date', today);
-      } else if (filters?.status === 'completed') {
-        query = query.lt('exam_date', today);
-      }
-
-      const { from, to } = getSupabaseRange(page, pageSize);
-      query = query.range(from, to);
-
-      const { data, error, count } = await query;
-
-      if (error) throw error;
-      return { data: (data || []) as Exam[], totalCount: count || 0 };
+      const { data } = await api.get<{ exams: RawExam[]; totalCount: number }>('/school/exams', { params });
+      return { data: data.exams.map(mapExam), totalCount: data.totalCount };
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,
@@ -107,36 +156,8 @@ export function useExamStats() {
   return useQuery({
     queryKey: ['exam-stats', schoolId],
     queryFn: async () => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const today = new Date().toISOString().split('T')[0];
-      const monthStart = new Date();
-      monthStart.setDate(1);
-      const monthStartStr = monthStart.toISOString().split('T')[0];
-
-      const [totalResult, upcomingResult, thisMonthResult] = await Promise.all([
-        supabase
-          .from('exams')
-          .select('*', { count: 'exact', head: true })
-          .eq('school_id', schoolId),
-        supabase
-          .from('exams')
-          .select('*', { count: 'exact', head: true })
-          .eq('school_id', schoolId)
-          .gte('exam_date', today),
-        supabase
-          .from('exams')
-          .select('*', { count: 'exact', head: true })
-          .eq('school_id', schoolId)
-          .gte('exam_date', monthStartStr),
-      ]);
-
-      return {
-        total: totalResult.count || 0,
-        upcoming: upcomingResult.count || 0,
-        completed: (totalResult.count || 0) - (upcomingResult.count || 0),
-        thisMonth: thisMonthResult.count || 0,
-      };
+      const { data } = await api.get<{ total: number; upcoming: number; completed: number; thisMonth: number }>('/school/exams/stats');
+      return data;
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,
@@ -145,28 +166,25 @@ export function useExamStats() {
 
 export function useCreateExam() {
   const queryClient = useQueryClient();
-  const schoolId = useEffectiveSchoolId();
 
   return useMutation({
     mutationFn: async (formData: ExamFormData) => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const { data, error } = await supabase
-        .from('exams')
-        .insert({ ...formData, school_id: schoolId })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const { data } = await api.post('/school/exams', {
+        name: formData.name,
+        subject: formData.subject,
+        className: formData.class_name,
+        examDate: formData.exam_date,
+        maxMarks: formData.max_marks,
+      });
+      return data.exam;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exams'] });
       queryClient.invalidateQueries({ queryKey: ['exam-stats'] });
       toast.success('Exam created successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create exam');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || error.message || 'Failed to create exam');
     },
   });
 }
@@ -176,23 +194,23 @@ export function useUpdateExam() {
 
   return useMutation({
     mutationFn: async ({ id, ...formData }: Partial<ExamFormData> & { id: string }) => {
-      const { data, error } = await supabase
-        .from('exams')
-        .update(formData)
-        .eq('id', id)
-        .select()
-        .single();
+      const payload: Record<string, unknown> = {};
+      if (formData.name !== undefined) payload.name = formData.name;
+      if (formData.subject !== undefined) payload.subject = formData.subject;
+      if (formData.class_name !== undefined) payload.className = formData.class_name;
+      if (formData.exam_date !== undefined) payload.examDate = formData.exam_date;
+      if (formData.max_marks !== undefined) payload.maxMarks = formData.max_marks;
 
-      if (error) throw error;
-      return data;
+      const { data } = await api.patch(`/school/exams/${id}`, payload);
+      return data.exam;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exams'] });
       queryClient.invalidateQueries({ queryKey: ['exam-stats'] });
       toast.success('Exam updated successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update exam');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || error.message || 'Failed to update exam');
     },
   });
 }
@@ -202,20 +220,15 @@ export function useDeleteExam() {
 
   return useMutation({
     mutationFn: async (examId: string) => {
-      const { error } = await supabase
-        .from('exams')
-        .delete()
-        .eq('id', examId);
-
-      if (error) throw error;
+      await api.delete(`/school/exams/${examId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exams'] });
       queryClient.invalidateQueries({ queryKey: ['exam-stats'] });
       toast.success('Exam deleted successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete exam');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || error.message || 'Failed to delete exam');
     },
   });
 }
@@ -224,110 +237,10 @@ export function useExamResults(examId: string) {
   return useQuery({
     queryKey: ['exam-results', examId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('results')
-        .select(`*, student:students(full_name, admission_number)`)
-        .eq('exam_id', examId);
-
-      if (error) throw error;
-      return data as ExamResult[];
+      const { data } = await api.get<{ results: RawExamResult[] }>(`/school/exams/${examId}/results`);
+      return data.results.map(mapResult);
     },
     enabled: !!examId,
     staleTime: 2 * 60 * 1000,
-  });
-}
-
-export function useSaveResult() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({
-      examId,
-      studentId,
-      marksObtained,
-      grade,
-      remarks,
-    }: {
-      examId: string;
-      studentId: string;
-      marksObtained: number;
-      grade?: string;
-      remarks?: string;
-    }) => {
-      const { data: existing } = await supabase
-        .from('results')
-        .select('id')
-        .eq('exam_id', examId)
-        .eq('student_id', studentId)
-        .maybeSingle();
-
-      if (existing) {
-        const { error } = await supabase
-          .from('results')
-          .update({ marks_obtained: marksObtained, grade, remarks })
-          .eq('id', existing.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from('results')
-          .insert({ exam_id: examId, student_id: studentId, marks_obtained: marksObtained, grade, remarks });
-        if (error) throw error;
-      }
-    },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['exam-results', variables.examId] });
-      toast.success('Result saved');
-
-      // Notify student and parent about exam result
-      supabase
-        .from('exams')
-        .select('name, subject, school_id')
-        .eq('id', variables.examId)
-        .single()
-        .then(({ data: exam }) => {
-          if (!exam) return;
-
-          supabase
-            .from('students')
-            .select('user_id, parent_email')
-            .eq('id', variables.studentId)
-            .single()
-            .then(({ data: student }) => {
-              if (!student) return;
-
-              const notifyIds: string[] = [];
-              if (student.user_id) notifyIds.push(student.user_id);
-
-              const doSend = () => {
-                if (notifyIds.length > 0) {
-                  sendNotification({
-                    userIds: notifyIds,
-                    title: 'Result Published',
-                    body: `${exam.name} - ${exam.subject}: ${variables.marksObtained} marks${variables.grade ? ` (${variables.grade})` : ''}`,
-                    type: 'result',
-                    schoolId: exam.school_id,
-                  });
-                }
-              };
-
-              if (student.parent_email) {
-                supabase
-                  .from('profiles')
-                  .select('id')
-                  .eq('email', student.parent_email)
-                  .maybeSingle()
-                  .then(({ data: parent }) => {
-                    if (parent) notifyIds.push(parent.id);
-                    doSend();
-                  });
-              } else {
-                doSend();
-              }
-            });
-        });
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to save result');
-    },
   });
 }

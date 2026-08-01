@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useParentChild } from '@/hooks/useParentData';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Award, FileText } from 'lucide-react';
 
@@ -23,19 +23,45 @@ interface ExamResult {
   };
 }
 
+interface RawChildResult {
+  id: string;
+  marks: number;
+  grade: string | null;
+  remarks: string | null;
+  exam: {
+    id: string;
+    name: string;
+    subject: string;
+    maxMarks: number;
+    examDate: string;
+    class?: { name: string } | null;
+  };
+}
+
+// GET /api/parent/results/:studentId — the endpoint verifies server-side
+// that studentId is actually this parent's own child before returning
+// anything (see the route's comment in parent.js); a parent can't read
+// another family's results by editing the id in this query.
 function useChildResults(studentId?: string) {
   return useQuery({
     queryKey: ['child-results', studentId],
-    queryFn: async () => {
+    queryFn: async (): Promise<ExamResult[]> => {
       if (!studentId) return [];
-      const { data, error } = await supabase
-        .from('results')
-        .select('*, exam:exams(*)')
-        .eq('student_id', studentId)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (error) throw error;
-      return (data || []) as ExamResult[];
+      const { data } = await api.get<{ results: RawChildResult[] }>(`/parent/results/${studentId}`);
+      return data.results.map(r => ({
+        id: r.id,
+        marks_obtained: Number(r.marks),
+        grade: r.grade,
+        remarks: r.remarks,
+        exam: {
+          id: r.exam.id,
+          name: r.exam.name,
+          subject: r.exam.subject,
+          max_marks: Number(r.exam.maxMarks),
+          exam_date: r.exam.examDate,
+          class_name: r.exam.class?.name || '',
+        },
+      }));
     },
     enabled: !!studentId,
     staleTime: 3 * 60 * 1000,
