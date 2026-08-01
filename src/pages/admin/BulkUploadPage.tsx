@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
   parseFile,
@@ -143,32 +143,13 @@ export default function BulkUploadPage() {
         setUploadProgress(prev => Math.min(prev + 5, 85));
       }, 500);
 
-      const { data: { session } } = await supabase.auth.getSession();
-
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bulk-upload`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            type: uploadType,
-            records: validRows,
-            school_id: schoolId,
-          }),
-        }
-      );
+      const { data: result } = await api.post('/school/bulk-upload', {
+        type: uploadType,
+        records: validRows,
+      });
 
       clearInterval(progressInterval);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Upload failed');
-      }
-
-      const result = await response.json();
       setUploadProgress(100);
       setUploadResult(result);
       setStep('result');
@@ -187,7 +168,7 @@ export default function BulkUploadPage() {
         toast.warning(`Uploaded ${result.inserted} ${uploadType} with ${result.errors.length} errors`);
       }
     } catch (err: any) {
-      toast.error(err.message || 'Upload failed');
+      toast.error(err?.response?.data?.error || err.message || 'Upload failed');
       setStep('preview');
       setUploadProgress(0);
     }
