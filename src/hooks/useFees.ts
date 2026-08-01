@@ -1,9 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { getSupabaseRange } from './usePagination';
-import { sendNotification } from '@/lib/send-notification';
+import { toast } from 'sonner';
+import { queryKeys } from '@/lib/query-keys';
 
 export interface FeeRecord {
   id: string;
@@ -166,6 +168,17 @@ export function useRecordPayment() {
   });
 }
 
+// Migrated to Express — same fix as useCreateInvoice (FeeInvoiceItem.
+// feeStructureId relaxed to optional, see that hook's note), just called
+// with a single item instead of a caller-built list. Old fee_type/amount
+// row becomes a one-item FeeInvoice via the same POST /school/fees/invoices
+// endpoint useCreateInvoice already uses — no separate backend flow.
+//
+// The old client-side notification block queried Supabase `students`/
+// `profiles` by the *old* Supabase ids, the same wrong-id-space bug flagged
+// on send-notification.ts's other pre-migration callers — dropped rather
+// than ported forward, matching useCreateInvoice, which never had this
+// notification step either.
 export function useCreateFee() {
   const queryClient = useQueryClient();
   const schoolId = useEffectiveSchoolId();
@@ -179,64 +192,23 @@ export function useCreateFee() {
     }) => {
       if (!schoolId) throw new Error('No school ID');
 
-      const { data, error } = await supabase
-        .from('fees')
-        .insert({
-          ...feeData,
-          school_id: schoolId,
-          status: 'pending',
-        })
-        .select()
-        .single();
+      const { data } = await api.post('/school/fees/invoices', {
+        studentId: feeData.student_id,
+        dueDate: feeData.due_date,
+        items: [{ name: feeData.fee_type, amount: feeData.amount }],
+      });
 
-      if (error) throw error;
-      return data;
+      return data.invoice;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fees'] });
       queryClient.invalidateQueries({ queryKey: ['fee-stats'] });
-
-      // Notify student and parent about new fee due
-      if (schoolId && data) {
-        supabase
-          .from('students')
-          .select('user_id, parent_email, full_name')
-          .eq('id', data.student_id)
-          .single()
-          .then(({ data: student }) => {
-            if (!student) return;
-
-            const notifyIds: string[] = [];
-            if (student.user_id) notifyIds.push(student.user_id);
-
-            const sendToStudent = () => {
-              if (notifyIds.length > 0) {
-                sendNotification({
-                  userIds: notifyIds,
-                  title: 'Fee Due',
-                  body: `₹${data.amount} ${data.fee_type} fee due by ${data.due_date}`,
-                  type: 'fee',
-                  referenceId: data.id,
-                  schoolId,
-                });
-              }
-            };
-
-            if (student.parent_email) {
-              supabase
-                .from('profiles')
-                .select('id')
-                .eq('email', student.parent_email)
-                .maybeSingle()
-                .then(({ data: parent }) => {
-                  if (parent) notifyIds.push(parent.id);
-                  sendToStudent();
-                });
-            } else {
-              sendToStudent();
-            }
-          });
-      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.allFeeInvoices });
+      queryClient.invalidateQueries({ queryKey: queryKeys.allInvoiceStats });
+      toast.success('Fee assigned');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to assign fee');
     },
   });
 }
