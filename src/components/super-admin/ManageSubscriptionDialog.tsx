@@ -160,27 +160,19 @@ export function ManageSubscriptionDialog({
           id: existingSubscription.id,
           student_count: studentCount,
           price_per_student: pricePerStudent,
-          total_amount: totalAmount,
           status: formData.status as any,
           start_date: formData.startDate,
           end_date: formData.endDate,
         });
       } else {
-        // Create new subscription
-        const { error } = await supabase
-          .from('subscriptions')
-          .insert({
-            school_id: formData.schoolId,
-            plan_type: 'yearly',
-            student_count: studentCount,
-            price_per_student: pricePerStudent,
-            total_amount: totalAmount,
-            status: formData.status as any,
-            start_date: formData.startDate,
-            end_date: formData.endDate,
-          });
-        if (error) throw error;
-        toast.success('Subscription created successfully');
+        await createSubscription.mutateAsync({
+          schoolId: formData.schoolId,
+          studentCount,
+          pricePerStudent,
+          status: formData.status,
+          startDate: formData.startDate,
+          endDate: formData.endDate,
+        });
       }
       onOpenChange(false);
     } catch (err: any) {
