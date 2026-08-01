@@ -1,7 +1,19 @@
 import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
 import ExcelJS from 'exceljs';
+
+// ─────────────────────────────────────────────────────────────────────────
+// 7 of the 9 report types now generate server-side (reports.controller.js)
+// and download the returned .xlsx as a blob — the client no longer builds
+// the workbook itself for these. Exam Results and Performance Analysis (and
+// the Custom Builder's "exams" module) are deliberately NOT migrated: the
+// underlying Exam/Result tables have zero rows in Postgres today (marks
+// entry — useExams.ts/TeacherMarks.tsx — is still fully on Supabase, a
+// separate unmigrated subsystem), so those keep their original client-side
+// Supabase path until that gets its own batch.
+// ─────────────────────────────────────────────────────────────────────────
 
 async function downloadWorkbook(wb: ExcelJS.Workbook, filename: string) {
   const buffer = await wb.xlsx.writeBuffer();
@@ -12,6 +24,31 @@ async function downloadWorkbook(wb: ExcelJS.Workbook, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Reports fail as a JSON error body, but axios still hands it back as a
+// Blob when responseType is 'blob' — has to be read as text and parsed
+// before the real message is visible.
+async function extractReportError(err: any): Promise<string> {
+  const data = err?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      const parsed = JSON.parse(await data.text());
+      return parsed.error || 'Failed to generate report';
+    } catch {
+      return 'Failed to generate report';
+    }
+  }
+  return err?.response?.data?.error || err?.message || 'Failed to generate report';
 }
 
 function autoWidth(ws: ExcelJS.Worksheet) {
@@ -60,44 +97,18 @@ export function useReportGenerators() {
     if (!schoolId) return;
     const tid = toast.loading('Generating Student List Report...');
     try {
-      let query = supabase
-        .from('students')
-        .select('full_name, admission_number, class_name, section, parent_name, parent_phone, parent_email, gender, date_of_birth, status, roll_number')
-        .eq('school_id', schoolId)
-        .order('class_name')
-        .order('section')
-        .order('roll_number');
+      const params: Record<string, string> = {};
+      if (filters.className) params.className = filters.className;
+      if (filters.section) params.section = filters.section;
+      if (filters.status && filters.status !== 'all') params.status = filters.status;
 
-      if (filters.className) query = query.eq('class_name', filters.className);
-      if (filters.section) query = query.eq('section', filters.section);
-      if (filters.status && filters.status !== 'all') query = query.eq('status', filters.status);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Student List');
-      addHeader(ws, 'Student List Report');
-
-      const headerRow = ws.addRow(['#', 'Name', 'Admission No', 'Class', 'Section', 'Roll No', 'Gender', 'DOB', 'Parent Name', 'Parent Phone', 'Parent Email', 'Status']);
-      styleHeaderRow(headerRow);
-
-      (data || []).forEach((s, i) => {
-        ws.addRow([
-          i + 1, s.full_name, s.admission_number, s.class_name, s.section,
-          s.roll_number || '', s.gender || '', s.date_of_birth ? new Date(s.date_of_birth).toLocaleDateString('en-IN') : '',
-          s.parent_name || '', s.parent_phone || '', s.parent_email || '', s.status || 'active',
-        ]);
-      });
-
-      autoWidth(ws);
-      ws.views = [{ state: 'frozen', ySplit: 4 }];
-      await downloadWorkbook(wb, `student-list-${new Date().toISOString().split('T')[0]}.xlsx`);
+      const response = await api.get('/school/reports/students', { params, responseType: 'blob' });
+      downloadBlob(response.data, `student-list-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.dismiss(tid);
-      toast.success(`Student List exported (${data?.length || 0} records)`);
-    } catch (err: any) {
+      toast.success('Student List exported');
+    } catch (err) {
       toast.dismiss(tid);
-      toast.error(err.message || 'Failed to generate report');
+      toast.error(await extractReportError(err));
     }
   };
 
@@ -106,62 +117,13 @@ export function useReportGenerators() {
     if (!schoolId) return;
     const tid = toast.loading('Generating Class-wise Report...');
     try {
-      const { data, error } = await supabase
-        .from('students')
-        .select('full_name, admission_number, class_name, section, roll_number, gender, status')
-        .eq('school_id', schoolId)
-        .eq('status', 'active')
-        .order('class_name')
-        .order('section')
-        .order('roll_number');
-
-      if (error) throw error;
-
-      const wb = new ExcelJS.Workbook();
-
-      // Group by class
-      const classMap = new Map<string, typeof data>();
-      for (const s of data || []) {
-        const key = s.class_name;
-        if (!classMap.has(key)) classMap.set(key, []);
-        classMap.get(key)!.push(s);
-      }
-
-      // Summary sheet
-      const summary = wb.addWorksheet('Summary');
-      addHeader(summary, 'Class-wise Summary');
-      const sHeader = summary.addRow(['Class', 'Total Students', 'Boys', 'Girls']);
-      styleHeaderRow(sHeader);
-
-      let grandTotal = 0;
-      for (const [cls, students] of Array.from(classMap.entries()).sort()) {
-        const boys = students.filter(s => s.gender?.toLowerCase() === 'male').length;
-        const girls = students.filter(s => s.gender?.toLowerCase() === 'female').length;
-        summary.addRow([cls, students.length, boys, girls]);
-        grandTotal += students.length;
-      }
-      const totalRow = summary.addRow(['TOTAL', grandTotal, '', '']);
-      totalRow.font = { bold: true };
-      autoWidth(summary);
-
-      // Detail sheets per class
-      for (const [cls, students] of Array.from(classMap.entries()).sort()) {
-        const ws = wb.addWorksheet(`Class ${cls}`);
-        addHeader(ws, `Class ${cls} Students`);
-        const h = ws.addRow(['#', 'Name', 'Admission No', 'Section', 'Roll No', 'Gender']);
-        styleHeaderRow(h);
-        students.forEach((s, i) => {
-          ws.addRow([i + 1, s.full_name, s.admission_number, s.section, s.roll_number || '', s.gender || '']);
-        });
-        autoWidth(ws);
-      }
-
-      await downloadWorkbook(wb, `class-wise-report-${new Date().toISOString().split('T')[0]}.xlsx`);
+      const response = await api.get('/school/reports/class-wise', { responseType: 'blob' });
+      downloadBlob(response.data, `class-wise-report-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.dismiss(tid);
-      toast.success(`Class-wise report exported (${grandTotal} students)`);
-    } catch (err: any) {
+      toast.success('Class-wise report exported');
+    } catch (err) {
       toast.dismiss(tid);
-      toast.error(err.message || 'Failed to generate report');
+      toast.error(await extractReportError(err));
     }
   };
 
@@ -171,66 +133,16 @@ export function useReportGenerators() {
     const date = filters.date || new Date().toISOString().split('T')[0];
     const tid = toast.loading('Generating Daily Attendance Report...');
     try {
-      // Get all active students
-      let studentQuery = supabase
-        .from('students')
-        .select('id, full_name, admission_number, class_name, section, roll_number')
-        .eq('school_id', schoolId)
-        .eq('status', 'active')
-        .order('class_name')
-        .order('section')
-        .order('roll_number');
+      const params: Record<string, string> = { date };
+      if (filters.className) params.className = filters.className;
 
-      if (filters.className) studentQuery = studentQuery.eq('class_name', filters.className);
-
-      const [studentsRes, attendanceRes] = await Promise.all([
-        studentQuery,
-        supabase
-          .from('attendance')
-          .select('student_id, status, notes')
-          .eq('school_id', schoolId)
-          .eq('date', date),
-      ]);
-
-      if (studentsRes.error) throw studentsRes.error;
-      if (attendanceRes.error) throw attendanceRes.error;
-
-      const attMap = new Map<string, { status: string; notes: string | null }>();
-      for (const a of attendanceRes.data || []) {
-        attMap.set(a.student_id, { status: a.status, notes: a.notes });
-      }
-
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Daily Attendance');
-      addHeader(ws, `Daily Attendance Report - ${new Date(date).toLocaleDateString('en-IN')}`);
-
-      const headerRow = ws.addRow(['#', 'Name', 'Admission No', 'Class', 'Section', 'Roll No', 'Status', 'Notes']);
-      styleHeaderRow(headerRow);
-
-      let present = 0, absent = 0, late = 0, unmarked = 0;
-      (studentsRes.data || []).forEach((s, i) => {
-        const att = attMap.get(s.id);
-        const status = att?.status || 'Not Marked';
-        if (status === 'present') present++;
-        else if (status === 'absent') absent++;
-        else if (status === 'late') late++;
-        else unmarked++;
-        ws.addRow([i + 1, s.full_name, s.admission_number, s.class_name, s.section, s.roll_number || '', status, att?.notes || '']);
-      });
-
-      // Summary at bottom
-      ws.addRow([]);
-      const sumRow = ws.addRow(['Summary', '', '', `Present: ${present}`, `Absent: ${absent}`, `Late: ${late}`, `Unmarked: ${unmarked}`, `Total: ${studentsRes.data?.length || 0}`]);
-      sumRow.font = { bold: true };
-
-      autoWidth(ws);
-      ws.views = [{ state: 'frozen', ySplit: 4 }];
-      await downloadWorkbook(wb, `daily-attendance-${date}.xlsx`);
+      const response = await api.get('/school/reports/attendance/daily', { params, responseType: 'blob' });
+      downloadBlob(response.data, `daily-attendance-${date}.xlsx`);
       toast.dismiss(tid);
       toast.success(`Attendance report exported for ${new Date(date).toLocaleDateString('en-IN')}`);
-    } catch (err: any) {
+    } catch (err) {
       toast.dismiss(tid);
-      toast.error(err.message || 'Failed to generate report');
+      toast.error(await extractReportError(err));
     }
   };
 
@@ -241,63 +153,16 @@ export function useReportGenerators() {
     const dateTo = filters.dateTo || new Date().toISOString().split('T')[0];
     const tid = toast.loading('Generating Absentee Report...');
     try {
-      const { data: attendance, error } = await supabase
-        .from('attendance')
-        .select('student_id, date, status')
-        .eq('school_id', schoolId)
-        .eq('status', 'absent')
-        .gte('date', dateFrom)
-        .lte('date', dateTo);
+      const params: Record<string, string> = { dateFrom, dateTo };
+      if (filters.className) params.className = filters.className;
 
-      if (error) throw error;
-
-      // Count absences per student
-      const absMap = new Map<string, { count: number; dates: string[] }>();
-      for (const a of attendance || []) {
-        if (!absMap.has(a.student_id)) absMap.set(a.student_id, { count: 0, dates: [] });
-        const entry = absMap.get(a.student_id)!;
-        entry.count++;
-        entry.dates.push(a.date);
-      }
-
-      // Get student details for those with absences
-      const studentIds = Array.from(absMap.keys());
-      if (studentIds.length === 0) {
-        toast.dismiss(tid);
-        toast.info('No absences found in the selected date range.');
-        return;
-      }
-
-      const { data: students, error: sErr } = await supabase
-        .from('students')
-        .select('id, full_name, admission_number, class_name, section, parent_phone')
-        .in('id', studentIds);
-
-      if (sErr) throw sErr;
-
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Absentee Report');
-      addHeader(ws, `Absentee Report (${new Date(dateFrom).toLocaleDateString('en-IN')} - ${new Date(dateTo).toLocaleDateString('en-IN')})`);
-
-      const headerRow = ws.addRow(['#', 'Name', 'Admission No', 'Class', 'Section', 'Absence Count', 'Parent Phone']);
-      styleHeaderRow(headerRow);
-
-      const sorted = (students || [])
-        .map(s => ({ ...s, absences: absMap.get(s.id)?.count || 0 }))
-        .sort((a, b) => b.absences - a.absences);
-
-      sorted.forEach((s, i) => {
-        ws.addRow([i + 1, s.full_name, s.admission_number, s.class_name, s.section, s.absences, s.parent_phone || '']);
-      });
-
-      autoWidth(ws);
-      ws.views = [{ state: 'frozen', ySplit: 4 }];
-      await downloadWorkbook(wb, `absentee-report-${dateFrom}-to-${dateTo}.xlsx`);
+      const response = await api.get('/school/reports/attendance/absentees', { params, responseType: 'blob' });
+      downloadBlob(response.data, `absentee-report-${dateFrom}-to-${dateTo}.xlsx`);
       toast.dismiss(tid);
-      toast.success(`Absentee report exported (${sorted.length} students)`);
-    } catch (err: any) {
+      toast.success('Absentee report exported');
+    } catch (err) {
       toast.dismiss(tid);
-      toast.error(err.message || 'Failed to generate report');
+      toast.error(await extractReportError(err));
     }
   };
 
@@ -306,74 +171,18 @@ export function useReportGenerators() {
     if (!schoolId) return;
     const tid = toast.loading('Generating Fee Collection Report...');
     try {
-      let query = supabase
-        .from('fee_payments')
-        .select('amount, payment_method, payment_date, receipt_number, student:students!inner(full_name, admission_number, class_name, section)')
-        .eq('school_id', schoolId)
-        .order('payment_date', { ascending: false });
+      const params: Record<string, string> = {};
+      if (filters.dateFrom) params.dateFrom = filters.dateFrom;
+      if (filters.dateTo) params.dateTo = filters.dateTo;
+      if (filters.className) params.className = filters.className;
 
-      if (filters.dateFrom) query = query.gte('payment_date', filters.dateFrom);
-      if (filters.dateTo) query = query.lte('payment_date', filters.dateTo);
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Filter by class in JS since it's from joined table
-      let filtered = data || [];
-      if (filters.className) {
-        filtered = filtered.filter((p: any) => p.student?.class_name === filters.className);
-      }
-
-      const wb = new ExcelJS.Workbook();
-
-      // Detail sheet
-      const ws = wb.addWorksheet('Collection Details');
-      addHeader(ws, 'Fee Collection Report');
-      const headerRow = ws.addRow(['#', 'Receipt No', 'Student', 'Admission No', 'Class', 'Section', 'Amount', 'Method', 'Date']);
-      styleHeaderRow(headerRow);
-
-      let total = 0;
-      filtered.forEach((p: any, i: number) => {
-        total += Number(p.amount);
-        ws.addRow([
-          i + 1, p.receipt_number, p.student?.full_name, p.student?.admission_number,
-          p.student?.class_name, p.student?.section, Number(p.amount), p.payment_method,
-          new Date(p.payment_date).toLocaleDateString('en-IN'),
-        ]);
-      });
-      const tRow = ws.addRow(['', '', '', '', '', 'TOTAL', total, '', '']);
-      tRow.font = { bold: true };
-      ws.getColumn(7).numFmt = '₹#,##0';
-      autoWidth(ws);
-      ws.views = [{ state: 'frozen', ySplit: 4 }];
-
-      // Summary by payment method
-      const methodMap = new Map<string, number>();
-      for (const p of filtered) {
-        const m = (p as any).payment_method || 'Unknown';
-        methodMap.set(m, (methodMap.get(m) || 0) + Number(p.amount));
-      }
-      const sumWs = wb.addWorksheet('Method Breakdown');
-      addHeader(sumWs, 'Payment Method Breakdown');
-      const sh = sumWs.addRow(['Payment Method', 'Total Amount', 'Transactions']);
-      styleHeaderRow(sh);
-      const methodCount = new Map<string, number>();
-      for (const p of filtered) {
-        const m = (p as any).payment_method || 'Unknown';
-        methodCount.set(m, (methodCount.get(m) || 0) + 1);
-      }
-      for (const [method, amount] of Array.from(methodMap.entries())) {
-        sumWs.addRow([method, amount, methodCount.get(method) || 0]);
-      }
-      sumWs.getColumn(2).numFmt = '₹#,##0';
-      autoWidth(sumWs);
-
-      await downloadWorkbook(wb, `fee-collection-${new Date().toISOString().split('T')[0]}.xlsx`);
+      const response = await api.get('/school/reports/fees/collection', { params, responseType: 'blob' });
+      downloadBlob(response.data, `fee-collection-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.dismiss(tid);
-      toast.success(`Collection report exported (₹${total.toLocaleString('en-IN')} from ${filtered.length} payments)`);
-    } catch (err: any) {
+      toast.success('Collection report exported');
+    } catch (err) {
       toast.dismiss(tid);
-      toast.error(err.message || 'Failed to generate report');
+      toast.error(await extractReportError(err));
     }
   };
 
@@ -382,60 +191,22 @@ export function useReportGenerators() {
     if (!schoolId) return;
     const tid = toast.loading('Generating Pending Dues Report...');
     try {
-      let query = supabase
-        .from('fee_invoices')
-        .select('id, total_amount, paid_amount, balance, due_date, status, student:students!inner(full_name, admission_number, class_name, section, parent_phone)')
-        .eq('school_id', schoolId)
-        .neq('status', 'paid')
-        .order('due_date', { ascending: true });
+      const params: Record<string, string> = {};
+      if (filters.className) params.className = filters.className;
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      let filtered = data || [];
-      if (filters.className) {
-        filtered = filtered.filter((inv: any) => inv.student?.class_name === filters.className);
-      }
-
-      // Get last payment date per student
-      const studentIds = [...new Set(filtered.map((inv: any) => inv.student_id).filter(Boolean))];
-      
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Pending Dues');
-      addHeader(ws, 'Pending Dues Report');
-
-      const headerRow = ws.addRow(['#', 'Student', 'Admission No', 'Class', 'Section', 'Total Amount', 'Paid', 'Balance', 'Due Date', 'Status', 'Parent Phone']);
-      styleHeaderRow(headerRow);
-
-      const today = new Date().toISOString().split('T')[0];
-      let totalPending = 0;
-      filtered.forEach((inv: any, i: number) => {
-        const isOverdue = inv.status === 'pending' && inv.due_date < today;
-        totalPending += Number(inv.balance);
-        ws.addRow([
-          i + 1, inv.student?.full_name, inv.student?.admission_number, inv.student?.class_name,
-          inv.student?.section, Number(inv.total_amount), Number(inv.paid_amount), Number(inv.balance),
-          new Date(inv.due_date).toLocaleDateString('en-IN'), isOverdue ? 'Overdue' : inv.status,
-          inv.student?.parent_phone || '',
-        ]);
-      });
-
-      const tRow = ws.addRow(['', '', '', '', 'TOTAL', '', '', totalPending, '', '', '']);
-      tRow.font = { bold: true };
-      [6, 7, 8].forEach(col => { ws.getColumn(col).numFmt = '₹#,##0'; });
-      autoWidth(ws);
-      ws.views = [{ state: 'frozen', ySplit: 4 }];
-
-      await downloadWorkbook(wb, `pending-dues-${new Date().toISOString().split('T')[0]}.xlsx`);
+      const response = await api.get('/school/reports/fees/pending', { params, responseType: 'blob' });
+      downloadBlob(response.data, `pending-dues-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.dismiss(tid);
-      toast.success(`Pending dues exported (₹${totalPending.toLocaleString('en-IN')} from ${filtered.length} invoices)`);
-    } catch (err: any) {
+      toast.success('Pending dues exported');
+    } catch (err) {
       toast.dismiss(tid);
-      toast.error(err.message || 'Failed to generate report');
+      toast.error(await extractReportError(err));
     }
   };
 
   // ─── EXAM RESULTS REPORT ─────────────────────────────
+  // Deferred — Exam/Result have zero rows in Postgres (marks entry is still
+  // on Supabase). Unchanged client-side path until that batch happens.
   const generateExamResults = async (filters: ReportFilters = {}) => {
     if (!schoolId) return;
     const tid = toast.loading('Generating Exam Results Report...');
@@ -521,6 +292,8 @@ export function useReportGenerators() {
   };
 
   // ─── PERFORMANCE ANALYSIS ────────────────────────────
+  // Deferred — same Exam/Result dependency as above, plus needs its own new
+  // aggregation logic. Unchanged client-side path.
   const generatePerformanceAnalysis = async (filters: ReportFilters = {}) => {
     if (!schoolId) return;
     const tid = toast.loading('Generating Performance Analysis...');
@@ -625,60 +398,15 @@ export function useReportGenerators() {
   };
 
   // ─── CUSTOM REPORT BUILDER ───────────────────────────
+  // students/fees/attendance modules now hit the server-side endpoint;
+  // "exams" stays on its original client-side Supabase path (deferred, same
+  // reason as the two reports above).
   const generateCustomReport = async (module: string, fields: string[], filters: ReportFilters = {}) => {
     if (!schoolId) return;
-    const tid = toast.loading('Generating Custom Report...');
-    try {
-      let data: any[] = [];
-      let title = 'Custom Report';
 
-      if (module === 'students') {
-        title = 'Custom Student Report';
-        let q = supabase.from('students').select(fields.join(',')).eq('school_id', schoolId);
-        if (filters.className) q = q.eq('class_name', filters.className);
-        if (filters.section) q = q.eq('section', filters.section);
-        if (filters.status && filters.status !== 'all') q = q.eq('status', filters.status);
-        const { data: d, error } = await q;
-        if (error) throw error;
-        data = d || [];
-      } else if (module === 'fees') {
-        title = 'Custom Fee Report';
-        const { data: d, error } = await supabase
-          .from('fee_invoices')
-          .select('total_amount, paid_amount, balance, due_date, status, student:students!inner(full_name, class_name, section)')
-          .eq('school_id', schoolId);
-        if (error) throw error;
-        data = (d || []).map((inv: any) => ({
-          student_name: inv.student?.full_name,
-          class_name: inv.student?.class_name,
-          section: inv.student?.section,
-          total_amount: inv.total_amount,
-          paid_amount: inv.paid_amount,
-          balance: inv.balance,
-          due_date: inv.due_date,
-          status: inv.status,
-        }));
-        if (filters.className) data = data.filter(r => r.class_name === filters.className);
-      } else if (module === 'attendance') {
-        title = 'Custom Attendance Report';
-        const date = filters.date || new Date().toISOString().split('T')[0];
-        const { data: d, error } = await supabase
-          .from('attendance')
-          .select('date, status, notes, student:students!inner(full_name, class_name, section)')
-          .eq('school_id', schoolId)
-          .eq('date', date);
-        if (error) throw error;
-        data = (d || []).map((a: any) => ({
-          student_name: a.student?.full_name,
-          class_name: a.student?.class_name,
-          section: a.student?.section,
-          date: a.date,
-          status: a.status,
-          notes: a.notes,
-        }));
-        if (filters.className) data = data.filter(r => r.class_name === filters.className);
-      } else if (module === 'exams') {
-        title = 'Custom Exam Report';
+    if (module === 'exams') {
+      const tid = toast.loading('Generating Custom Report...');
+      try {
         const { data: d, error } = await supabase
           .from('results')
           .select('marks_obtained, grade, remarks, exam:exams!inner(name, subject, class_name, max_marks), student:students!inner(full_name, class_name, section)')
@@ -686,7 +414,7 @@ export function useReportGenerators() {
             await supabase.from('exams').select('id').eq('school_id', schoolId)
           ).data?.map(e => e.id) || []);
         if (error) throw error;
-        data = (d || []).map((r: any) => ({
+        let data = (d || []).map((r: any) => ({
           student_name: r.student?.full_name,
           class_name: r.exam?.class_name,
           exam_name: r.exam?.name,
@@ -696,38 +424,52 @@ export function useReportGenerators() {
           grade: r.grade,
         }));
         if (filters.className) data = data.filter(r => r.class_name === filters.className);
-      }
 
-      if (data.length === 0) {
+        if (data.length === 0) {
+          toast.dismiss(tid);
+          toast.info('No data found for the selected criteria.');
+          return;
+        }
+
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Report');
+        addHeader(ws, 'Custom Exam Report');
+
+        const columns = fields.length > 0 ? fields : Object.keys(data[0]);
+        const headerRow = ws.addRow(columns.map(c => c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())));
+        styleHeaderRow(headerRow);
+
+        for (const row of data) {
+          ws.addRow(columns.map(c => (row as any)[c] ?? ''));
+        }
+
+        autoWidth(ws);
+        ws.views = [{ state: 'frozen', ySplit: 4 }];
+        await downloadWorkbook(wb, `custom-report-${new Date().toISOString().split('T')[0]}.xlsx`);
         toast.dismiss(tid);
-        toast.info('No data found for the selected criteria.');
-        return;
+        toast.success(`Custom report exported (${data.length} records)`);
+      } catch (err: any) {
+        toast.dismiss(tid);
+        toast.error(err.message || 'Failed to generate report');
       }
+      return;
+    }
 
-      const wb = new ExcelJS.Workbook();
-      const ws = wb.addWorksheet('Report');
-      addHeader(ws, title);
+    const tid = toast.loading('Generating Custom Report...');
+    try {
+      const params: Record<string, string> = { module, fields: fields.join(',') };
+      if (filters.className) params.className = filters.className;
+      if (filters.section) params.section = filters.section;
+      if (filters.status && filters.status !== 'all') params.status = filters.status;
+      if (filters.date) params.date = filters.date;
 
-      const columns = Object.keys(data[0]);
-      const headerRow = ws.addRow(columns.map(c => c.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())));
-      styleHeaderRow(headerRow);
-
-      for (const row of data) {
-        ws.addRow(columns.map(c => {
-          const val = row[c];
-          if (val instanceof Date) return val.toLocaleDateString('en-IN');
-          return val ?? '';
-        }));
-      }
-
-      autoWidth(ws);
-      ws.views = [{ state: 'frozen', ySplit: 4 }];
-      await downloadWorkbook(wb, `custom-report-${new Date().toISOString().split('T')[0]}.xlsx`);
+      const response = await api.get('/school/reports/custom', { params, responseType: 'blob' });
+      downloadBlob(response.data, `custom-report-${new Date().toISOString().split('T')[0]}.xlsx`);
       toast.dismiss(tid);
-      toast.success(`Custom report exported (${data.length} records)`);
-    } catch (err: any) {
+      toast.success('Custom report exported');
+    } catch (err) {
       toast.dismiss(tid);
-      toast.error(err.message || 'Failed to generate report');
+      toast.error(await extractReportError(err));
     }
   };
 
