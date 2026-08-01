@@ -43,7 +43,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useStudents, useStudentStats, useDeleteStudent, Student } from '@/hooks/useStudents';
+import { useStudents, useStudentStats, useDeleteStudent, useCreateStudent, Student } from '@/hooks/useStudents';
 import { useCreateFee } from '@/hooks/useFees';
 import { invokeEdgeFunction } from '@/lib/api';
 import { friendlyErrorMessage } from '@/lib/error-utils';
@@ -132,6 +132,7 @@ export default function StudentsPage() {
   const totalCount = result?.totalCount || 0;
   const { data: stats, isLoading: statsLoading } = useStudentStats();
   const { data: classes } = useClasses();
+  const createStudent = useCreateStudent();
   const createFee = useCreateFee();
   const deleteStudent = useDeleteStudent();
 
@@ -153,28 +154,34 @@ export default function StudentsPage() {
       return;
     }
 
+    // class_name/section are display strings from the form; the backend
+    // needs the real sectionId FK. classes (useClasses()) already carries
+    // each class's nested sections with real ids, so resolve it here rather
+    // than asking the backend to guess at a name match.
+    const matchedClass = classes?.find(c => c.name === formData.class_name);
+    const matchedSection = matchedClass?.sections.find(s => s.name === formData.section);
+    if (!matchedSection) {
+      toast.error(`Section "${formData.section}" not found in ${formData.class_name}`);
+      return;
+    }
+
     setIsCreating(true);
     try {
-      const result = await invokeEdgeFunction<{ student: any; created_accounts?: any[] }>(
-        'create-student-with-accounts',
-        {
-          full_name: formData.full_name,
-          admission_number: formData.admission_number,
-          class_name: formData.class_name,
-          section: formData.section,
-          roll_number: formData.roll_number ? parseInt(formData.roll_number) : undefined,
-          gender: formData.gender || undefined,
-          date_of_birth: formData.date_of_birth || undefined,
-          parent_name: formData.parent_name || undefined,
-          parent_phone: formData.parent_phone || undefined,
-          alternate_phone: formData.alternate_phone || undefined,
-          student_email: formData.student_email || undefined,
-          parent_email: formData.parent_email || undefined,
-          blood_group: formData.blood_group || undefined,
-          avatar_url: formData.avatar_url || undefined,
-          school_id: schoolId,
-        },
-      );
+      const result = await createStudent.mutateAsync({
+        full_name: formData.full_name,
+        admission_number: formData.admission_number,
+        sectionId: matchedSection.id,
+        roll_number: formData.roll_number ? parseInt(formData.roll_number) : undefined,
+        gender: formData.gender || undefined,
+        date_of_birth: formData.date_of_birth || undefined,
+        parent_name: formData.parent_name || undefined,
+        parent_phone: formData.parent_phone || undefined,
+        alternate_phone: formData.alternate_phone || undefined,
+        student_email: formData.student_email || undefined,
+        parent_email: formData.parent_email || undefined,
+        blood_group: formData.blood_group || undefined,
+        avatar_url: formData.avatar_url || undefined,
+      });
 
       const student = result.student;
 
@@ -201,7 +208,7 @@ export default function StudentsPage() {
       }
 
       // Show credentials dialog
-      const accounts = result.created_accounts || [];
+      const accounts = result.createdAccounts || [];
       if (accounts.length > 0) {
         setCredentialsStudentName(formData.full_name);
         setCreatedAccounts(accounts);
@@ -219,8 +226,13 @@ export default function StudentsPage() {
       });
       setFeeEntries([]);
       setIsAddDialogOpen(false);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Failed to add student';
+    } catch (error: any) {
+      // api.post (axios) throws with the real backend message under
+      // response.data.error, not error.message (that's just "Request
+      // failed with status code 400") — invokeEdgeFunction used to put the
+      // real message directly on .message, so this extraction changed along
+      // with the call.
+      const msg = error?.response?.data?.error || (error instanceof Error ? error.message : 'Failed to add student');
       toast.error(friendlyErrorMessage(msg));
     } finally {
       setIsCreating(false);

@@ -196,6 +196,15 @@ export function useStudentStats() {
   });
 }
 
+// Created-account credentials returned once by POST /school/students when
+// studentEmail/parentEmail create a login — matches CredentialsDialog.tsx's
+// CreatedAccount shape exactly (role/email/password/name), which is what
+// the old create-student-with-accounts Edge Function also returned.
+export interface CreateStudentResult {
+  student: RawStudent;
+  createdAccounts: { role: string; email: string; password: string; name: string }[];
+}
+
 export function useCreateStudent() {
   const queryClient = useQueryClient();
   const schoolId = useEffectiveSchoolId();
@@ -214,12 +223,12 @@ export function useCreateStudent() {
       parent_name?: string;
       parent_phone?: string;
       parent_email?: string;
+      alternate_phone?: string;
+      student_email?: string;
       address?: string;
       blood_group?: string;
-      // NOTE: alternate_phone had no home in the Prisma schema (no field
-      // on Student, Parent, or User) — dropped. Flag if you need it kept;
-      // it'd need a schema migration.
-    }) => {
+      avatar_url?: string;
+    }): Promise<CreateStudentResult> => {
       if (!schoolId) throw new Error('No school ID');
 
       const [firstName, ...rest] = studentData.full_name.trim().split(' ');
@@ -235,20 +244,23 @@ export function useCreateStudent() {
         dob: studentData.date_of_birth,
         address: studentData.address,
         bloodGroup: studentData.blood_group,
+        alternatePhone: studentData.alternate_phone,
+        studentEmail: studentData.student_email,
+        photo: studentData.avatar_url,
         parentName: studentData.parent_name,
         parentPhone: studentData.parent_phone,
         parentEmail: studentData.parent_email,
       });
 
-      return data.student as RawStudent;
+      return { student: data.student as RawStudent, createdAccounts: data.createdAccounts || [] };
     },
+    // No onError toast here — StudentsPage.tsx (today's only caller) already
+    // catches and toasts the error itself via mutateAsync's rejection,
+    // matching how it handled the old Edge Function's thrown errors. Adding
+    // one here too would double-toast the same failure.
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allStudents });
       queryClient.invalidateQueries({ queryKey: queryKeys.allStudentStats });
-      toast.success('Student added successfully');
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.error || 'Failed to add student');
     },
   });
 }
