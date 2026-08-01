@@ -27,6 +27,8 @@ export interface School {
   phone: string | null;
   email: string | null;
   logo: string | null;
+  primary_color: string | null;
+  accent_color: string | null;
   is_active: boolean | null;
   student_limit: number | null;
   subscription_status: string | null;
@@ -71,6 +73,7 @@ interface RawSchool {
   schoolCode: string;
   logo: string | null;
   primaryColor: string;
+  accentColor?: string | null;
   address?: string | null;
   city: string | null;
   state: string | null;
@@ -99,6 +102,8 @@ function mapSchool(raw: RawSchool): School {
     phone: raw.phone,
     email: raw.email,
     logo: raw.logo,
+    primary_color: raw.primaryColor ?? null,
+    accent_color: raw.accentColor ?? null,
     // A suspended school is not usable, so treat it as inactive here.
     is_active: raw.isActive && !raw.isSuspended,
     // ⚠️ Gap: no `studentLimit` column on the Prisma School model. Always
@@ -183,15 +188,10 @@ export function useCreateSchool() {
 
   return useMutation({
     mutationFn: async (formData: SchoolFormData & { logoPreview?: string | null }) => {
-      // ⚠️ Same gap as updateSchool(): POST /superadmin/schools has no `logo`
-      // or `accentColor` in its destructure, so those two fields are
-      // collected by the form but silently dropped server-side today.
-      // Extending createSchool() is the fix; not done here since it's a
-      // separate, pre-existing issue from the admin-account gap this
-      // migration is closing.
+      // logoPreview is a local base64 render-preview only (SchoolFormDialog.tsx
+      // uploads the real file to Storage on selection and puts the resulting
+      // public URL in formData.logo — that's what actually gets sent).
       void formData.logoPreview;
-      void formData.logo;
-      void formData.accent_color;
 
       const { data } = await api.post('/superadmin/schools', {
         name: formData.name,
@@ -201,7 +201,9 @@ export function useCreateSchool() {
         city: formData.city,
         phone: formData.phone || null,
         email: formData.email || null,
+        logo: formData.logo || null,
         primaryColor: formData.primary_color || '#0F766E',
+        accentColor: formData.accent_color || '#E69500',
         adminFirstName: formData.adminFirstName,
         adminLastName: formData.adminLastName,
         adminEmail: formData.adminEmail,
@@ -227,22 +229,19 @@ export function useUpdateSchool() {
 
   return useMutation({
     mutationFn: async ({ id, logoPreview, ...formData }: Partial<SchoolFormData> & { id: string; logoPreview?: string | null }) => {
-      // ⚠️ PUT /superadmin/schools/:id accepts only: name, primaryColor,
-      // address, city, state, pincode, phone, email, website, board, medium,
-      // upiId, subscriptionPlan, subscriptionEnd.
-      //
-      // So `code`/`subdomain` are immutable server-side (arguably correct —
-      // both are unique tenant identifiers), and `logo` and `accent_color`
-      // have no home: logo isn't in the controller's destructure, and there
-      // is no accentColor column. Those edits are silently dropped today —
-      // extending updateSchool() is the fix.
+      // `code`/`subdomain` stay immutable server-side (both are unique
+      // tenant identifiers) — everything else the form collects, including
+      // logo (real Storage URL by the time this runs, see useCreateSchool's
+      // note) and accent_color, now round-trips.
       const { data } = await api.put(`/superadmin/schools/${id}`, {
         ...(formData.name !== undefined && { name: formData.name }),
         ...(formData.address !== undefined && { address: formData.address }),
         ...(formData.city !== undefined && { city: formData.city }),
         ...(formData.phone !== undefined && { phone: formData.phone || null }),
         ...(formData.email !== undefined && { email: formData.email || null }),
+        ...(formData.logo !== undefined && { logo: formData.logo || null }),
         ...(formData.primary_color !== undefined && { primaryColor: formData.primary_color }),
+        ...(formData.accent_color !== undefined && { accentColor: formData.accent_color }),
       });
 
       void logoPreview;

@@ -52,13 +52,6 @@ export function EditTeacherDialog({ teacher, open, onOpenChange }: EditTeacherDi
     );
   }, [dbClasses]);
 
-  const classOptions = (dbClasses || []).flatMap(cls => {
-    const secs = cls.sections ?? [];
-    return secs.length > 0
-      ? secs.map(sec => `${cls.name}-${sec.name}`)
-      : [cls.name];
-  });
-
   // Track which sections this teacher is class teacher of
   const [classTeacherSections, setClassTeacherSections] = useState<string[]>([]);
 
@@ -68,7 +61,6 @@ export function EditTeacherDialog({ teacher, open, onOpenChange }: EditTeacherDi
     phone: '',
     qualification: '',
     subjects: [] as string[],
-    classes: [] as string[],
     joining_date: '',
     avatar_url: null as string | null,
   });
@@ -83,7 +75,6 @@ export function EditTeacherDialog({ teacher, open, onOpenChange }: EditTeacherDi
         phone: teacher.phone || '',
         qualification: teacher.qualification || '',
         subjects: teacher.subjects || [],
-        classes: teacher.classes || [],
         joining_date: teacher.joining_date || '',
         avatar_url: teacher.avatar_url || null,
       });
@@ -111,15 +102,6 @@ export function EditTeacherDialog({ teacher, open, onOpenChange }: EditTeacherDi
     }
   };
 
-  const toggleClass = (cls: string) => {
-    setForm(f => ({
-      ...f,
-      classes: f.classes.includes(cls)
-        ? f.classes.filter(c => c !== cls)
-        : [...f.classes, cls],
-    }));
-  };
-
   const toggleClassTeacherSection = (sectionId: string) => {
     setClassTeacherSections(prev =>
       prev.includes(sectionId)
@@ -141,10 +123,9 @@ export function EditTeacherDialog({ teacher, open, onOpenChange }: EditTeacherDi
       phone: form.phone || null,
       qualification: form.qualification || null,
       subjects: form.subjects.length > 0 ? form.subjects : null,
-      classes: form.classes.length > 0 ? form.classes : null,
       joining_date: form.joining_date || null,
       avatar_url: form.avatar_url,
-    } as any);
+    });
 
     // Sync class teacher assignments
     // Find original sections this teacher was class teacher of
@@ -246,28 +227,11 @@ export function EditTeacherDialog({ teacher, open, onOpenChange }: EditTeacherDi
         </div>
       </div>
 
-      {/* Assigned Classes */}
-      <div className="space-y-2">
-        <Label>Assigned Classes</Label>
-        {classOptions.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
-            {classOptions.map(cls => (
-              <Badge
-                key={cls}
-                variant={form.classes.includes(cls) ? 'default' : 'outline'}
-                className="cursor-pointer text-xs"
-                onClick={() => toggleClass(cls)}
-              >
-                {cls}
-              </Badge>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No classes configured yet.</p>
-        )}
-      </div>
-
-      {/* Class Teacher of - NEW */}
+      {/* Class Teacher of — the one real relation (Section.classTeacherId).
+          The old "Assigned Classes" checkbox array lived here too, backed by
+          a Teacher.classes column that never existed in Prisma; removed
+          rather than fixed, since this section already correctly edits the
+          same underlying relationship. */}
       <div className="space-y-2">
         <Label className="flex items-center gap-1.5">
           <GraduationCap className="w-4 h-4" />

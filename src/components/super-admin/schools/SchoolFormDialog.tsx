@@ -9,10 +9,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Upload, X, Palette, Globe, Eye, EyeOff, UserCog } from 'lucide-react';
+import { Upload, X, Palette, Globe, Eye, EyeOff, UserCog, Loader2 } from 'lucide-react';
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { Separator } from '@/components/ui/separator';
 import { validatePassword } from '@/lib/password-validation';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+
+// School logo upload was silently going nowhere: handleLogoChange only ever
+// set a local base64 preview (FileReader.readAsDataURL) — formData.logo,
+// the field actually submitted, stayed empty unless editing a school that
+// already had one. Reuses the same platform-assets Storage bucket + public-
+// URL pattern already established for platform branding (BrandingSettings.tsx)
+// — Storage itself is unaffected by the Auth/DB migration, same as every
+// other upload in the app.
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+function getPublicUrl(path: string) {
+  return `${SUPABASE_URL}/storage/v1/object/public/platform-assets/${path}`;
+}
 
 interface SchoolFormData {
   name: string;
@@ -93,6 +107,7 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [autoSubdomain, setAutoSubdomain] = useState(true);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -125,18 +140,35 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
     }
   }, [open, editingSchool]);
 
-  const handleLogoChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert('File size must be less than 2MB');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLogoPreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('File size must be less than 2MB');
+      return;
+    }
+
+    // Instant local preview while the real upload happens in the background.
+    const reader = new FileReader();
+    reader.onloadend = () => setLogoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+
+    setUploadingLogo(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `school-logos/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from('platform-assets')
+        .upload(path, file, { upsert: true, cacheControl: '3600' });
+      if (error) throw error;
+
+      setFormData(prev => ({ ...prev, logo: getPublicUrl(path) }));
+    } catch (err: any) {
+      toast.error('Failed to upload logo: ' + err.message);
+      setLogoPreview(null);
+    } finally {
+      setUploadingLogo(false);
     }
   }, []);
 
@@ -414,11 +446,13 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
                     variant="outline"
                     size="sm"
                     onClick={removeLogo}
+                    disabled={uploadingLogo}
                     className="text-destructive hover:text-destructive"
                   >
                     <X className="w-4 h-4 mr-1" />
                     Remove
                   </Button>
+                  {uploadingLogo && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -428,10 +462,12 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
                     accept="image/*"
                     onChange={handleLogoChange}
                     className="hidden"
+                    disabled={uploadingLogo}
                   />
                   <Button
                     type="button"
                     variant="outline"
+                    disabled={uploadingLogo}
                     onClick={() => document.getElementById('logo')?.click()}
                   >
                     <Upload className="w-4 h-4 mr-2" />
@@ -451,7 +487,7 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting || uploadingLogo}>
               {isSubmitting ? 'Saving...' : editingSchool ? 'Update School' : 'Add School'}
             </Button>
           </div>
