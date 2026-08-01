@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Upload, Trash2, ImageIcon, ZoomIn, X, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -13,24 +14,28 @@ interface TimetableImageUploadProps {
   selectedSection: string;
 }
 
+interface TimetableImage {
+  id: string;
+  image_url: string;
+  updated_at: string;
+}
+
 export function TimetableImageUpload({ schoolId, selectedClass, selectedSection }: TimetableImageUploadProps) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showFullscreen, setShowFullscreen] = useState(false);
 
+  // DB metadata (the pointer row) lives on Express now; the actual file
+  // stays in Supabase Storage's "timetables" bucket — unaffected by the
+  // Auth/DB migration, same pattern as every other upload in this app.
   const { data: timetableImage, isLoading: loadingImage } = useQuery({
     queryKey: ['timetable-image', schoolId, selectedClass, selectedSection],
-    queryFn: async () => {
-      if (!schoolId || !selectedClass) return null;
-      const { data, error } = await supabase
-        .from('timetable_images' as any)
-        .select('*')
-        .eq('school_id', schoolId)
-        .eq('class_name', selectedClass)
-        .eq('section', selectedSection)
-        .maybeSingle();
-      if (error) throw error;
-      return data as unknown as { id: string; image_url: string; updated_at: string } | null;
+    queryFn: async (): Promise<TimetableImage | null> => {
+      const { data } = await api.get('/school/timetable-images', {
+        params: { className: selectedClass, section: selectedSection },
+      });
+      if (!data.image) return null;
+      return { id: data.image.id, image_url: data.image.imageUrl, updated_at: data.image.updatedAt };
     },
     enabled: !!schoolId && !!selectedClass,
   });
@@ -44,14 +49,11 @@ export function TimetableImageUpload({ schoolId, selectedClass, selectedSection 
       if (uploadError) throw uploadError;
       const { data: urlData } = supabase.storage.from('timetables').getPublicUrl(path);
       const imageUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-      const { error: dbError } = await supabase
-        .from('timetable_images' as any)
-        .upsert({ school_id: schoolId, class_name: selectedClass, section: selectedSection, image_url: imageUrl } as any, { onConflict: 'school_id,class_name,section' });
-      if (dbError) throw dbError;
+      await api.post('/school/timetable-images', { className: selectedClass, section: selectedSection, imageUrl });
       return imageUrl;
     },
     onSuccess: () => { toast.success('Timetable uploaded'); queryClient.invalidateQueries({ queryKey: ['timetable-image'] }); },
-    onError: (err: any) => toast.error(err.message || 'Upload failed'),
+    onError: (err: any) => toast.error(err.response?.data?.error || err.message || 'Upload failed'),
   });
 
   const deleteMutation = useMutation({
@@ -59,11 +61,10 @@ export function TimetableImageUpload({ schoolId, selectedClass, selectedSection 
       if (!schoolId || !selectedClass || !timetableImage) throw new Error('Nothing to delete');
       const { data: files } = await supabase.storage.from('timetables').list(schoolId, { search: `${selectedClass}-${selectedSection}` });
       if (files?.length) await supabase.storage.from('timetables').remove(files.map(f => `${schoolId}/${f.name}`));
-      const { error } = await supabase.from('timetable_images' as any).delete().eq('id', (timetableImage as any).id);
-      if (error) throw error;
+      await api.delete(`/school/timetable-images/${timetableImage.id}`);
     },
     onSuccess: () => { toast.success('Timetable removed'); queryClient.invalidateQueries({ queryKey: ['timetable-image'] }); },
-    onError: (err: any) => toast.error(err.message || 'Delete failed'),
+    onError: (err: any) => toast.error(err.response?.data?.error || err.message || 'Delete failed'),
   });
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
