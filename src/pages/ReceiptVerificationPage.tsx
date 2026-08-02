@@ -8,14 +8,7 @@ interface ReceiptData {
   amount_paid: number;
   payment_date: string;
   payment_method: string;
-  student_name: string;
-  admission_number: string;
-  class_name: string;
-  section: string;
   school_name: string;
-  invoice_status: string;
-  total_amount: number;
-  remaining_balance: number;
 }
 
 export default function ReceiptVerificationPage() {
@@ -32,14 +25,9 @@ export default function ReceiptVerificationPage() {
         return;
       }
       try {
-        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+        const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api';
         const resp = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/verify-receipt?receipt_number=${encodeURIComponent(receiptNumber)}`,
-          {
-            headers: {
-              'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-            },
-          }
+          `${apiUrl}/payment/verify-receipt?receipt_number=${encodeURIComponent(receiptNumber)}`
         );
         const json = await resp.json();
 
@@ -114,18 +102,6 @@ export default function ReceiptVerificationPage() {
               </p>
             </div>
             <div>
-              <p className="text-muted-foreground">Student Name</p>
-              <p className="font-semibold text-foreground">{data.student_name}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Admission No</p>
-              <p className="font-semibold text-foreground">{data.admission_number}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Class</p>
-              <p className="font-semibold text-foreground">{data.class_name} {data.section}</p>
-            </div>
-            <div>
               <p className="text-muted-foreground">Payment Mode</p>
               <p className="font-semibold text-foreground capitalize">{data.payment_method}</p>
             </div>
@@ -135,32 +111,6 @@ export default function ReceiptVerificationPage() {
           <div className="bg-accent/50 rounded-lg p-4 text-center">
             <p className="text-sm text-muted-foreground mb-1">Amount Paid</p>
             <p className="text-2xl font-bold text-foreground">₹{formatINR(data.amount_paid)}</p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 text-sm pt-2 border-t border-border">
-            <div>
-              <p className="text-muted-foreground">Total Invoice</p>
-              <p className="font-semibold text-foreground">₹{formatINR(data.total_amount)}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Balance</p>
-              <p className={`font-semibold ${data.remaining_balance > 0 ? 'text-destructive' : 'text-green-600'}`}>
-                ₹{formatINR(data.remaining_balance)}
-              </p>
-            </div>
-          </div>
-
-          <div className="text-center pt-4 border-t border-border">
-            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${
-              data.invoice_status === 'paid'
-                ? 'bg-green-100 text-green-800'
-                : data.invoice_status === 'partial'
-                  ? 'bg-yellow-100 text-yellow-800'
-                  : 'bg-red-100 text-red-800'
-            }`}>
-              <CheckCircle className="w-3 h-3" />
-              {data.invoice_status === 'paid' ? 'Fully Paid' : data.invoice_status === 'partial' ? 'Partially Paid' : 'Pending'}
-            </span>
           </div>
         </div>
 
