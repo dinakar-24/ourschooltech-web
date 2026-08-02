@@ -9,7 +9,7 @@ import {
   usePaymentSubmissions, useApproveSubmission, useRejectSubmission,
   PaymentSubmission,
 } from '@/hooks/usePaymentSubmissions';
-import { supabase } from '@/integrations/supabase/client';
+import { getSignedReadUrl } from '@/lib/uploads';
 import {
   CheckCircle, XCircle, Eye, Loader2, Clock, IndianRupee, User, FileText,
 } from 'lucide-react';
@@ -25,12 +25,10 @@ export function PaymentVerificationPanel() {
   const [rejectId, setRejectId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
 
-  const viewScreenshot = async (path: string) => {
-    const { data } = await supabase.storage
-      .from('payment-proofs')
-      .createSignedUrl(path, 300);
-    if (data?.signedUrl) {
-      setScreenshotUrl(data.signedUrl);
+  const viewScreenshot = async (key: string) => {
+    const url = await getSignedReadUrl(key);
+    if (url) {
+      setScreenshotUrl(url);
       setScreenshotOpen(true);
     }
   };

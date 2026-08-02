@@ -13,20 +13,14 @@ import { Upload, X, Palette, Globe, Eye, EyeOff, UserCog, Loader2 } from 'lucide
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { Separator } from '@/components/ui/separator';
 import { validatePassword } from '@/lib/password-validation';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2 } from '@/lib/uploads';
 import { toast } from 'sonner';
 
 // School logo upload was silently going nowhere: handleLogoChange only ever
 // set a local base64 preview (FileReader.readAsDataURL) — formData.logo,
 // the field actually submitted, stayed empty unless editing a school that
-// already had one. Reuses the same platform-assets Storage bucket + public-
-// URL pattern already established for platform branding (BrandingSettings.tsx)
-// — Storage itself is unaffected by the Auth/DB migration, same as every
-// other upload in the app.
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-function getPublicUrl(path: string) {
-  return `${SUPABASE_URL}/storage/v1/object/public/platform-assets/${path}`;
-}
+// already had one. Reuses the same platform-assets folder + public-URL
+// pattern already established for platform branding (BrandingSettings.tsx).
 
 interface SchoolFormData {
   name: string;
@@ -157,13 +151,10 @@ export const SchoolFormDialog = memo(function SchoolFormDialog({
     setUploadingLogo(true);
     try {
       const ext = file.name.split('.').pop();
-      const path = `school-logos/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage
-        .from('platform-assets')
-        .upload(path, file, { upsert: true, cacheControl: '3600' });
-      if (error) throw error;
+      const key = `platform-assets/school-logos/${Date.now()}.${ext}`;
+      const { url } = await uploadToR2(key, file, file.type);
 
-      setFormData(prev => ({ ...prev, logo: getPublicUrl(path) }));
+      setFormData(prev => ({ ...prev, logo: url || '' }));
     } catch (err: any) {
       toast.error('Failed to upload logo: ' + err.message);
       setLogoPreview(null);

@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Upload, Trash2, ImageIcon, ZoomIn, X, Loader2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2, deleteFromR2, keyFromPublicUrl } from '@/lib/uploads';
 import { api } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -44,11 +44,9 @@ export function TimetableImageUpload({ schoolId, selectedClass, selectedSection 
     mutationFn: async (file: File) => {
       if (!schoolId || !selectedClass) throw new Error('Select a class first');
       const ext = file.name.split('.').pop();
-      const path = `${schoolId}/${selectedClass}-${selectedSection}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('timetables').upload(path, file, { upsert: true });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('timetables').getPublicUrl(path);
-      const imageUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+      const key = `timetables/${schoolId}/${selectedClass}-${selectedSection}.${ext}`;
+      const { url } = await uploadToR2(key, file, file.type);
+      const imageUrl = `${url}?t=${Date.now()}`;
       await api.post('/school/timetable-images', { className: selectedClass, section: selectedSection, imageUrl });
       return imageUrl;
     },
@@ -59,8 +57,8 @@ export function TimetableImageUpload({ schoolId, selectedClass, selectedSection 
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!schoolId || !selectedClass || !timetableImage) throw new Error('Nothing to delete');
-      const { data: files } = await supabase.storage.from('timetables').list(schoolId, { search: `${selectedClass}-${selectedSection}` });
-      if (files?.length) await supabase.storage.from('timetables').remove(files.map(f => `${schoolId}/${f.name}`));
+      const key = keyFromPublicUrl(timetableImage.image_url);
+      if (key) await deleteFromR2(key);
       await api.delete(`/school/timetable-images/${timetableImage.id}`);
     },
     onSuccess: () => { toast.success('Timetable removed'); queryClient.invalidateQueries({ queryKey: ['timetable-image'] }); },

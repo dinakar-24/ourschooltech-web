@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2, deleteFromR2, keyFromPublicUrl } from '@/lib/uploads';
 import { toast } from 'sonner';
 
 const ALLOWED_IMAGE_TYPES = new Set([
@@ -67,18 +67,10 @@ export function useAvatarUpload() {
       const compressed = await compressImage(file, 200, 0.8);
       const ext = compressed.type === 'image/webp' ? 'webp' : 'jpg';
       // Use crypto UUID for secure unique filename
-      const fileName = `${folder}/${crypto.randomUUID()}.${ext}`;
+      const key = `avatars/${folder}/${crypto.randomUUID()}.${ext}`;
 
-      const { error } = await supabase.storage.from('avatars').upload(fileName, compressed, {
-        cacheControl: '3600',
-        upsert: false, // Prevent overwrites
-        contentType: compressed.type,
-      });
-
-      if (error) throw error;
-
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      return urlData.publicUrl;
+      const { url } = await uploadToR2(key, compressed, compressed.type);
+      return url;
     } catch (err: any) {
       toast.error('Failed to upload image');
       console.error('Avatar upload error:', err);
@@ -90,11 +82,10 @@ export function useAvatarUpload() {
 
   const deleteAvatar = async (url: string): Promise<boolean> => {
     try {
-      const path = url.split('/avatars/')[1];
-      if (!path) return false;
+      const key = keyFromPublicUrl(url);
+      if (!key) return false;
 
-      const { error } = await supabase.storage.from('avatars').remove([path]);
-      if (error) throw error;
+      await deleteFromR2(key);
       return true;
     } catch (err) {
       console.error('Avatar delete error:', err);

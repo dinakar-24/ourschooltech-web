@@ -36,7 +36,7 @@ import { useClasses } from '@/hooks/useClasses';
 import { useTeacherHomework, useCreateHomework } from '@/hooks/useHomework';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2 } from '@/lib/uploads';
 import { toast } from 'sonner';
 
 const subjects = ['Mathematics', 'Physics', 'Chemistry', 'Biology', 'English', 'Hindi', 'Social Studies', 'Computer Science'];
@@ -92,14 +92,14 @@ export default function TeacherHomework() {
     const urls: string[] = [];
     for (const photo of photos) {
       const ext = photo.name.split('.').pop();
-      const path = `homework/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
-      const { error } = await supabase.storage.from('avatars').upload(path, photo);
-      if (error) {
-        console.error('Upload error:', error);
+      const key = `avatars/homework/${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`;
+      try {
+        const { url } = await uploadToR2(key, photo, photo.type);
+        if (url) urls.push(url);
+      } catch (err) {
+        console.error('Upload error:', err);
         continue;
       }
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path);
-      urls.push(urlData.publicUrl);
     }
     return urls;
   };

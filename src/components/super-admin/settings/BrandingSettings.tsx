@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
 import { Palette, Globe, ImageIcon, Loader2, Upload, Trash2 } from 'lucide-react';
 import { useSystemSettings } from '@/hooks/useSystemSettings';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2 } from '@/lib/uploads';
 
 import { toast } from 'sonner';
 
@@ -22,14 +22,6 @@ const BRANDING_FALLBACK = {
   logo_url: '',
   favicon_url: '',
 };
-
-
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
-function getPublicUrl(path: string) {
-  return `${SUPABASE_URL}/storage/v1/object/public/platform-assets/${path}`;
-}
 
 interface FileUploadZoneProps {
   label: string;
@@ -118,14 +110,10 @@ export function BrandingSettings() {
 
   const uploadFile = async (file: File, path: string) => {
     const ext = file.name.split('.').pop();
-    const filePath = `${path}.${ext}`;
+    const key = `platform-assets/${path}.${ext}`;
 
-    const { error } = await supabase.storage
-      .from('platform-assets')
-      .upload(filePath, file, { upsert: true, cacheControl: '60' });
-
-    if (error) throw error;
-    return getPublicUrl(filePath);
+    const { url } = await uploadToR2(key, file, file.type);
+    return url || '';
   };
 
   const handleLogoUpload = async (file: File) => {

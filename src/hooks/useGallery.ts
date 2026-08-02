@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2 } from '@/lib/uploads';
 import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
@@ -220,21 +220,15 @@ export function useUploadGalleryItem() {
         throw new Error('File is empty');
       }
 
-      // Secure filename with UUID (prevents path traversal) — bytes still
-      // go straight to Supabase Storage, unaffected by the S3 migration.
+      // Secure filename with UUID (prevents path traversal).
       const ext = file.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'bin';
-      const path = `${schoolId}/${albumId}/${crypto.randomUUID()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('gallery').upload(path, file, {
-        upsert: false,
-        contentType: file.type,
-      });
-      if (uploadError) throw uploadError;
-      const { data: urlData } = supabase.storage.from('gallery').getPublicUrl(path);
+      const key = `gallery/${schoolId}/${albumId}/${crypto.randomUUID()}.${ext}`;
+      const { url } = await uploadToR2(key, file, file.type);
       const apiFileType = FILE_TYPE_TO_API[file.type.startsWith('video/') ? 'video' : 'image'];
 
       // DB row + "set as cover if first item" now happen server-side in one call.
       await api.post(`/gallery/albums/${albumId}/items`, {
-        fileUrl: urlData.publicUrl,
+        fileUrl: url,
         fileType: apiFileType,
         caption: caption || undefined,
       });

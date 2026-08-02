@@ -47,7 +47,7 @@ import {
   ImagePlus,
   X,
 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2 } from '@/lib/uploads';
 import { 
   useAnnouncements, 
   useAnnouncementStats,
@@ -136,11 +136,9 @@ export default function AnnouncementsPage() {
     setUploadingImage(true);
     try {
       const ext = imageFile.name.split('.').pop();
-      const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from('announcements').upload(path, imageFile);
-      if (error) throw error;
-      const { data: urlData } = supabase.storage.from('announcements').getPublicUrl(path);
-      return urlData.publicUrl;
+      const key = `announcements/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { url } = await uploadToR2(key, imageFile, imageFile.type);
+      return url;
     } catch (err) {
       toast.error('Failed to upload image');
       return null;

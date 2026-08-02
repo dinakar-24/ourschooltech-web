@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useSubmitPayment } from '@/hooks/usePaymentSubmissions';
-import { supabase } from '@/integrations/supabase/client';
+import { uploadToR2 } from '@/lib/uploads';
 import { Loader2, Upload, Camera, Send } from 'lucide-react';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -72,16 +72,16 @@ export function SubmitPaymentDialog({
     if (screenshotFile) {
       setUploading(true);
       const ext = screenshotFile.name.split('.').pop();
-      const path = `${schoolId}/${invoiceId}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage
-        .from('payment-proofs')
-        .upload(path, screenshotFile);
-      setUploading(false);
-      if (uploadError) {
-        toast.error('Screenshot upload failed: ' + uploadError.message);
+      const key = `payment-proofs/${schoolId}/${invoiceId}/${Date.now()}.${ext}`;
+      try {
+        const result = await uploadToR2(key, screenshotFile, screenshotFile.type);
+        screenshotUrl = result.key; // private folder -- store the key, viewed later via a signed URL
+      } catch (err: any) {
+        toast.error('Screenshot upload failed: ' + (err.message || 'Unknown error'));
         return;
+      } finally {
+        setUploading(false);
       }
-      screenshotUrl = path;
     }
 
     const autoNote = feeLabels ? `Payment for: ${feeLabels}` : '';
