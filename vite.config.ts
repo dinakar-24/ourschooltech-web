@@ -125,6 +125,8 @@ export default defineConfig(() => {
       dedupe: ["react", "react-dom", "react/jsx-runtime"],
     },
     build: {
+      outDir: "build",
+      assetsDir: "static",
       rollupOptions: {
         output: {
           manualChunks: {
