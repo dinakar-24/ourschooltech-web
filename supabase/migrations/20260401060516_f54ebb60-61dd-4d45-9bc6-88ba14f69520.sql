@@ -1,1 +1,0 @@
-ALTER VIEW public.school_payment_config_safe SET (security_invoker = on);

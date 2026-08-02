@@ -1,1 +1,0 @@
-ALTER TABLE public.teachers ADD COLUMN avatar_url text;
