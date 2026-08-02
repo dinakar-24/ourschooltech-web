@@ -2,11 +2,13 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Bus, MapPin, Loader2 } from 'lucide-react';
-import { useStudentTransport } from '@/hooks/useTransport';
+import { useParentTransport } from '@/hooks/useTransport';
+import { useParentChild } from '@/hooks/useParentData';
 import { EmptyState } from '@/components/ui/data-states';
 
 export default function ParentTransport() {
-  const { data: transport = [], isLoading } = useStudentTransport();
+  const { data: child } = useParentChild();
+  const { data: transport = [], isLoading } = useParentTransport(child?.id);
 
   return (
     <MobileLayout title="Transport" showBack>

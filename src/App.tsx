@@ -16,7 +16,6 @@ import { AdminPermissionGuard } from "@/components/admin/AdminPermissionGuard";
 import { usePrefetchRoutes } from "@/hooks/usePrefetchRoutes";
 import { DynamicManifestHandler } from "@/components/pwa/DynamicManifestHandler";
 import { InstallAppBanner } from "@/components/pwa/InstallAppBanner";
-import { supabase } from "@/integrations/supabase/client";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { friendlyErrorMessage } from "@/lib/error-utils";
 import { logError } from "@/lib/logger";

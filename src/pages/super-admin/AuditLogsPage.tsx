@@ -21,7 +21,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Search, FileText, RefreshCw, Filter, User, Calendar } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
@@ -61,40 +61,8 @@ export default function AuditLogsPage() {
   const fetchLogs = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('id, user_id, action, entity_type, entity_id, details, ip_address, created_at')
-        .order('created_at', { ascending: false })
-        .limit(100);
-
-      if (error) throw error;
-
-      // Fetch user profiles for the logs
-      if (data && data.length > 0) {
-        const userIds = [...new Set(data.filter(l => l.user_id).map(l => l.user_id))];
-        
-        if (userIds.length > 0) {
-          const { data: profiles } = await supabase
-            .from('profiles')
-            .select('id, email, full_name')
-            .in('id', userIds);
-
-          const logsWithUsers = data.map(log => {
-            const profile = profiles?.find(p => p.id === log.user_id);
-            return {
-              ...log,
-              user_email: profile?.email,
-              user_name: profile?.full_name,
-            };
-          });
-
-          setLogs(logsWithUsers);
-        } else {
-          setLogs(data);
-        }
-      } else {
-        setLogs([]);
-      }
+      const { data } = await api.get('/superadmin/audit-logs', { params: { limit: 100 } });
+      setLogs(data.logs ?? []);
     } catch (error) {
       console.error('Error fetching audit logs:', error);
       toast.error('Failed to load audit logs');

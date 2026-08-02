@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from './useEffectiveSchoolId';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 export interface TransportRoute {
@@ -14,7 +15,6 @@ export interface TransportRoute {
   capacity: number;
   start_location: string | null;
   end_location: string | null;
-  stops: any[];
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -38,36 +38,51 @@ export function useTransportRoutes() {
   return useQuery({
     queryKey: ['transport-routes', schoolId],
     queryFn: async () => {
-      if (!schoolId) return [];
-      const { data, error } = await supabase
-        .from('transport_routes')
-        .select('id,route_name,route_number,driver_name,driver_phone,vehicle_number,capacity,start_location,end_location,stops,is_active,school_id')
-        .eq('school_id', schoolId)
-        .order('route_name');
-      if (error) throw error;
-      return data as TransportRoute[];
+      const { data } = await api.get('/school/transport/routes');
+      return data.routes as TransportRoute[];
     },
     enabled: !!schoolId,
     staleTime: 10 * 60 * 1000, // Transport routes rarely change
   });
 }
 
+// Admin view (optionally filtered by route) vs. a student's own assignment
+// are different endpoints server-side (no RLS to fall back on), so this
+// picks the right one by role. Called with no routeId for the student's own
+// "My Transport" page, matching the old single-hook call site unchanged.
 export function useStudentTransport(routeId?: string) {
   const schoolId = useEffectiveSchoolId();
+  const { user } = useAuth();
+  const role = user?.role;
+
   return useQuery({
-    queryKey: ['student-transport', schoolId, routeId],
+    queryKey: ['student-transport', schoolId, role, routeId],
     queryFn: async () => {
-      if (!schoolId) return [];
-      let query = supabase
-        .from('student_transport')
-        .select('*, student:students(full_name, class_name, section, admission_number), route:transport_routes(route_name, route_number, vehicle_number, driver_name, driver_phone)')
-        .eq('school_id', schoolId);
-      if (routeId) query = query.eq('route_id', routeId);
-      const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
-      if (error) throw error;
-      return data as unknown as StudentTransport[];
+      if (role === 'student') {
+        const { data } = await api.get('/student/transport');
+        return data.transport as StudentTransport[];
+      }
+      const { data } = await api.get('/school/transport/assignments', {
+        params: routeId ? { routeId } : undefined,
+      });
+      return data.assignments as StudentTransport[];
     },
-    enabled: !!schoolId,
+    enabled: !!schoolId && !!role,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+// Parent's own child's assignment — separate from useStudentTransport since
+// the endpoint needs an explicit studentId (same pattern as useParentInvoices
+// etc.: the page supplies childProfile.id from useParentChild()/useParentData()).
+export function useParentTransport(studentId?: string) {
+  return useQuery({
+    queryKey: ['parent-transport', studentId],
+    queryFn: async () => {
+      const { data } = await api.get(`/parent/transport/${studentId}`);
+      return data.transport as StudentTransport[];
+    },
+    enabled: !!studentId,
     staleTime: 5 * 60 * 1000,
   });
 }
@@ -76,12 +91,11 @@ export function useCreateRoute() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (route: Partial<TransportRoute>) => {
-      const { data, error } = await supabase.from('transport_routes').insert(route as any).select().single();
-      if (error) throw error;
+      const { data } = await api.post('/school/transport/routes', route);
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['transport-routes'] }); toast.success('Route created'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e?.response?.data?.error || e.message),
   });
 }
 
@@ -89,12 +103,11 @@ export function useUpdateRoute() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, ...rest }: Partial<TransportRoute> & { id: string }) => {
-      const { data, error } = await supabase.from('transport_routes').update(rest as any).eq('id', id).select().single();
-      if (error) throw error;
+      const { data } = await api.put(`/school/transport/routes/${id}`, rest);
       return data;
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['transport-routes'] }); toast.success('Route updated'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e?.response?.data?.error || e.message),
   });
 }
 
@@ -102,11 +115,10 @@ export function useDeleteRoute() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('transport_routes').delete().eq('id', id);
-      if (error) throw error;
+      await api.delete(`/school/transport/routes/${id}`);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['transport-routes'] }); toast.success('Route deleted'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e?.response?.data?.error || e.message),
   });
 }
 
@@ -114,11 +126,10 @@ export function useAssignStudent() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: { student_id: string; route_id: string; school_id: string; pickup_stop?: string; drop_stop?: string; boarding_type?: string }) => {
-      const { error } = await supabase.from('student_transport').insert(data as any);
-      if (error) throw error;
+      await api.post('/school/transport/assignments', data);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['student-transport'] }); toast.success('Student assigned to route'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e?.response?.data?.error || e.message),
   });
 }
 
@@ -126,10 +137,9 @@ export function useRemoveStudentTransport() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('student_transport').delete().eq('id', id);
-      if (error) throw error;
+      await api.delete(`/school/transport/assignments/${id}`);
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['student-transport'] }); toast.success('Student removed from route'); },
-    onError: (e: any) => toast.error(e.message),
+    onError: (e: any) => toast.error(e?.response?.data?.error || e.message),
   });
 }
