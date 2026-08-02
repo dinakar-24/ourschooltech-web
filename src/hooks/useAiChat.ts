@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
+import { getAccessToken } from '@/stores/authStore';
 import { toast } from 'sonner';
 
 export interface AiMessage {
@@ -25,14 +26,15 @@ export function useAiChat() {
     let cancelled = false;
     async function load() {
       if (!conversationId) { setMessages([]); return; }
-      const { data, error } = await supabase
-        .from('ai_messages')
-        .select('id, role, content, created_at')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true });
-      if (cancelled) return;
-      if (error) { setMessages([]); return; }
-      setMessages((data || []).filter((m: any) => m.role !== 'system') as AiMessage[]);
+      try {
+        const { data } = await api.get(`/ai-chat/conversations/${conversationId}/messages`);
+        if (cancelled) return;
+        setMessages((data.messages || []).map((m: any) => ({
+          id: m.id, role: m.role, content: m.content, created_at: m.createdAt,
+        })));
+      } catch {
+        if (!cancelled) setMessages([]);
+      }
     }
     load();
     return () => { cancelled = true; };
@@ -67,12 +69,11 @@ export function useAiChat() {
     abortRef.current = controller;
 
     try {
-      const { data: sess } = await supabase.auth.getSession();
-      const token = sess.session?.access_token;
+      const token = getAccessToken();
       if (!token) throw new Error('Please sign in to use OurSchool AI.');
 
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const url = `https://${projectId}.supabase.co/functions/v1/ai-chat`;
+      const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:5000/api';
+      const url = `${apiBase}/ai-chat`;
 
       const res = await fetch(url, {
         method: 'POST',
