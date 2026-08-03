@@ -9,7 +9,7 @@ import {
 import {
   Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger,
 } from '@/components/ui/drawer';
-import { Plus, Loader2, User, Hash, Mail, Droplets, IndianRupee } from 'lucide-react';
+import { Plus, Loader2, User, Hash, Mail, Droplets, IndianRupee, MapPin } from 'lucide-react';
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -37,6 +37,7 @@ interface AddStudentDialogProps {
     student_email: string;
     parent_email: string;
     blood_group: string;
+    address: string;
     avatar_url: string;
   };
   feeEntries: FeeEntry[];
@@ -351,6 +352,15 @@ function StudentFormContent({ formData, feeEntries, onFeeEntriesChange, onInputC
         onChange={(v) => onInputChange('date_of_birth', v)}
         required
       />
+
+      {/* Address */}
+      <div className="space-y-1.5">
+        <Label className="text-sm font-medium">Address</Label>
+        <div className="relative">
+          <MapPin className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+          <Input value={formData.address} onChange={(e) => onInputChange('address', e.target.value)} placeholder="Enter home address" className="pl-10 h-11" />
+        </div>
+      </div>
 
 
       {/* Actions */}
