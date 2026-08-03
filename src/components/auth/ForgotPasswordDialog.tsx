@@ -5,9 +5,8 @@ import { Mail, KeyRound, Lock, Loader2, ArrowLeft, Eye, EyeOff, X, ShieldCheck, 
 import { Input } from '@/components/ui/input';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { toast } from 'sonner';
-import { invokeEdgeFunction } from '@/lib/api';
+import { api } from '@/lib/api';
 import { validateEmail, friendlyErrorMessage } from '@/lib/error-utils';
-import { getDeviceId } from '@/lib/device-fingerprint';
 
 interface ForgotPasswordDialogProps {
   open: boolean;
@@ -50,7 +49,7 @@ export const ForgotPasswordDialog = React.forwardRef<HTMLDivElement, ForgotPassw
   const handleClose = () => { reset(); onClose(); };
 
   const sendOTP = async () => {
-    await invokeEdgeFunction('send-password-reset-otp', { email: email.trim(), deviceId: getDeviceId() });
+    await api.post('/auth/forgot-password/send-otp', { email: email.trim() });
   };
 
   const handleSendOTP = async (e: React.FormEvent) => {
@@ -65,7 +64,7 @@ export const ForgotPasswordDialog = React.forwardRef<HTMLDivElement, ForgotPassw
       setCooldown(60);
       setStep('otp');
     } catch (err: any) {
-      setError(friendlyErrorMessage(err.message));
+      setError(friendlyErrorMessage(err?.response?.data?.error || err.message));
     } finally {
       setLoading(false);
     }
@@ -80,7 +79,7 @@ export const ForgotPasswordDialog = React.forwardRef<HTMLDivElement, ForgotPassw
       toast.success('OTP resent to your email');
       setCooldown(60);
     } catch (err: any) {
-      setError(friendlyErrorMessage(err.message));
+      setError(friendlyErrorMessage(err?.response?.data?.error || err.message));
     } finally {
       setResending(false);
     }
@@ -93,15 +92,14 @@ export const ForgotPasswordDialog = React.forwardRef<HTMLDivElement, ForgotPassw
     setLoading(true);
     setError('');
     try {
-      await invokeEdgeFunction('verify-otp-only', {
+      await api.post('/auth/forgot-password/verify-otp', {
         email: email.trim(),
         otp: otp.trim(),
-        deviceId: getDeviceId(),
       });
       toast.success('OTP verified successfully');
       setStep('newPassword');
     } catch (err: any) {
-      setError(friendlyErrorMessage(err.message));
+      setError(friendlyErrorMessage(err?.response?.data?.error || err.message));
     } finally {
       setLoading(false);
     }
@@ -121,16 +119,15 @@ export const ForgotPasswordDialog = React.forwardRef<HTMLDivElement, ForgotPassw
     setLoading(true);
     setError('');
     try {
-      await invokeEdgeFunction('verify-password-reset-otp', {
+      await api.post('/auth/forgot-password/reset', {
         email: email.trim(),
         otp: otp.trim(),
         newPassword,
-        deviceId: getDeviceId(),
       });
       toast.success('Password updated successfully!');
       setStep('success');
     } catch (err: any) {
-      setError(friendlyErrorMessage(err.message));
+      setError(friendlyErrorMessage(err?.response?.data?.error || err.message));
     } finally {
       setLoading(false);
     }
