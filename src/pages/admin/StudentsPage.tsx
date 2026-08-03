@@ -52,7 +52,7 @@ import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { CredentialsDialog, type CreatedAccount } from '@/components/admin/CredentialsDialog';
 import { EditStudentDialog } from '@/components/admin/EditStudentDialog';
 import { ViewStudentDialog } from '@/components/admin/ViewStudentDialog';
-import { useClasses } from '@/hooks/useClasses';
+import { useClasses, useCreateClass, useCreateSection } from '@/hooks/useClasses';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { usePagination } from '@/hooks/usePagination';
@@ -135,6 +135,8 @@ export default function StudentsPage() {
   const createStudent = useCreateStudent();
   const createFee = useCreateFee();
   const deleteStudent = useDeleteStudent();
+  const createClass = useCreateClass();
+  const createSection = useCreateSection();
 
   const classNames = ['All Classes', ...(classes?.map(c => c.name) || [])];
   const { data: dynamicSections } = useSections();
@@ -145,7 +147,7 @@ export default function StudentsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.full_name || !formData.admission_number || !formData.class_name || !formData.section) {
+    if (!formData.full_name || !formData.admission_number || !formData.class_name || !formData.section || !formData.roll_number || !formData.gender || !formData.date_of_birth) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -154,24 +156,34 @@ export default function StudentsPage() {
       return;
     }
 
-    // class_name/section are display strings from the form; the backend
-    // needs the real sectionId FK. classes (useClasses()) already carries
-    // each class's nested sections with real ids, so resolve it here rather
-    // than asking the backend to guess at a name match.
-    const matchedClass = classes?.find(c => c.name === formData.class_name);
-    const matchedSection = matchedClass?.sections.find(s => s.name === formData.section);
-    if (!matchedSection) {
-      toast.error(`Section "${formData.section}" not found in ${formData.class_name}`);
-      return;
-    }
-
     setIsCreating(true);
     try {
+      // class_name/section are display strings from the form; the backend
+      // needs the real sectionId FK. classes (useClasses()) already carries
+      // each class's nested sections with real ids, so resolve it here --
+      // and if the admin used the "type manually" escape hatch (or picked a
+      // section chip that isn't a real section on this class yet), create
+      // the missing class/section on the fly instead of failing, since
+      // that's the whole point of manual entry.
+      const matchedClass = classes?.find(c => c.name === formData.class_name);
+      let classId = matchedClass?.id;
+      if (!classId) {
+        const newClass = await createClass.mutateAsync({ name: formData.class_name });
+        classId = newClass.id;
+      }
+
+      const matchedSection = matchedClass?.sections.find(s => s.name === formData.section);
+      let sectionId = matchedSection?.id;
+      if (!sectionId) {
+        const newSection = await createSection.mutateAsync({ classId, name: formData.section });
+        sectionId = newSection.id;
+      }
+
       const result = await createStudent.mutateAsync({
         full_name: formData.full_name,
         admission_number: formData.admission_number,
-        sectionId: matchedSection.id,
-        roll_number: formData.roll_number ? parseInt(formData.roll_number) : undefined,
+        sectionId,
+        roll_number: parseInt(formData.roll_number),
         gender: formData.gender || undefined,
         date_of_birth: formData.date_of_birth || undefined,
         parent_name: formData.parent_name || undefined,

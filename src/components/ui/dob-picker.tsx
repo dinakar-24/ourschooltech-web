@@ -31,9 +31,10 @@ interface DOBPickerProps {
   value: string;
   onChange: (value: string) => void;
   label?: string;
+  required?: boolean;
 }
 
-export function DOBPicker({ value, onChange, label = 'Date of Birth' }: DOBPickerProps) {
+export function DOBPicker({ value, onChange, label = 'Date of Birth', required }: DOBPickerProps) {
   const [open, setOpen] = useState(false);
 
   const currentYear = new Date().getFullYear();
@@ -72,7 +73,7 @@ export function DOBPicker({ value, onChange, label = 'Date of Birth' }: DOBPicke
 
   return (
     <div className="space-y-1.5">
-      <Label className="text-sm font-medium">{label}</Label>
+      <Label className="text-sm font-medium">{label} {required && <span className="text-destructive">*</span>}</Label>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button

@@ -228,7 +228,10 @@ export function useCreateStudent() {
         lastName,
         admissionNo: studentData.admission_number,
         sectionId: studentData.sectionId,
-        rollNo: studentData.roll_number,
+        // Student.rollNo is a Prisma String column (not Int) -- sending a
+        // number here throws a Prisma validation error, surfaced to the
+        // admin as an opaque "Failed to create student" 500.
+        rollNo: studentData.roll_number !== undefined ? String(studentData.roll_number) : undefined,
         gender: studentData.gender,
         dob: studentData.date_of_birth,
         address: studentData.address,
@@ -264,7 +267,8 @@ export function useUpdateStudent() {
 
       const { data } = await api.put(`/school/students/${id}`, {
         ...(updates.full_name && { firstName, lastName: rest.join(' ') || firstName }),
-        ...(updates.roll_number !== undefined && { rollNo: updates.roll_number }),
+        // Same String-column mismatch as useCreateStudent above.
+        ...(updates.roll_number !== undefined && { rollNo: updates.roll_number === null ? null : String(updates.roll_number) }),
         ...(updates.gender && { gender: updates.gender }),
         ...(updates.date_of_birth && { dob: updates.date_of_birth }),
         ...(updates.address !== undefined && { address: updates.address }),
