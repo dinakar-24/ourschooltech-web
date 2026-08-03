@@ -5,12 +5,11 @@ import { TodaysSummary } from '@/components/admin/TodaysSummary';
 import { PendingTasks } from '@/components/admin/PendingTasks';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/contexts/AuthContext';
-import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useQueryClient } from '@tanstack/react-query';
 import { Users, GraduationCap, CreditCard, ClipboardList, CalendarDays, RefreshCw } from 'lucide-react';
 import { useCurrentAcademicYear } from '@/hooks/useAcademicYears';
+import { useSchoolReportStats } from '@/hooks/useSchoolReportStats';
 import { useState, useRef, useCallback } from 'react';
 
 const formatCurrency = (amount: number) => {
@@ -28,27 +27,17 @@ const getGreeting = () => {
 
 export default function AdminDashboard() {
   const { user, school } = useAuth();
-  const schoolId = useEffectiveSchoolId();
   const { impersonatedSchool, isImpersonating } = useImpersonation();
 
-  const { data: stats, isLoading: loading } = useQuery({
-    queryKey: ['admin-dashboard-stats', schoolId],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_admin_dashboard_stats' as any, {
-        _school_id: schoolId,
-      } as any);
-      if (error) throw error;
-      const r = data as any;
-      return {
-        totalStudents: Number(r?.totalStudents ?? 0),
-        totalTeachers: Number(r?.totalTeachers ?? 0),
-        feeCollected: Number(r?.feeCollected ?? 0),
-        attendanceRate: Number(r?.attendanceRate ?? 0),
-      };
-    },
-    enabled: !!schoolId,
-    staleTime: 5 * 60 * 1000,
-  });
+  const { data: reportStats, isLoading: loading } = useSchoolReportStats();
+  const stats = reportStats && {
+    totalStudents: reportStats.totalStudents,
+    totalTeachers: reportStats.totalTeachers,
+    feeCollected: reportStats.totalFeeCollected,
+    attendanceRate: reportStats.attendanceToday.total > 0
+      ? Math.round((reportStats.attendanceToday.present / reportStats.attendanceToday.total) * 100)
+      : 0,
+  };
 
   const { data: currentAcademicYear } = useCurrentAcademicYear();
   const displaySchoolName = isImpersonating ? impersonatedSchool?.name : school?.name;
@@ -76,7 +65,7 @@ export default function AdminDashboard() {
   const handleTouchEnd = useCallback(async () => {
     if (pullY > 40 && !refreshing) {
       setRefreshing(true);
-      await queryClient.invalidateQueries({ queryKey: ['admin-dashboard-stats'] });
+      await queryClient.invalidateQueries({ queryKey: ['school-report-stats'] });
       setTimeout(() => {
         setRefreshing(false);
         setPullY(0);

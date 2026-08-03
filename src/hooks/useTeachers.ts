@@ -2,7 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
-import { invokeEdgeFunction } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -225,11 +224,12 @@ export function useDeleteTeacher() {
   const queryClient = useQueryClient();
 
   return useMutation({
+    // userId is accepted but unused -- the real endpoint deactivates the
+    // linked User itself (looked up server-side via the teacher row), same
+    // "accepted but not needed" shape as useUpdateTeacher's email above.
     mutationFn: async ({ teacherId, userId }: { teacherId: string; userId: string | null }) => {
-      await invokeEdgeFunction('delete-school-user', {
-        user_id: userId,
-        teacher_id: teacherId,
-      });
+      await api.delete(`/school/teachers/${teacherId}`);
+      void userId;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.allTeachers });

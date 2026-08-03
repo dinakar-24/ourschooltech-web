@@ -1,16 +1,14 @@
 import { useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { queryKeys } from '@/lib/query-keys';
 
-const FEE_REALTIME_TABLES = [
-  'fee_invoices',
-  'fee_payments',
-  'fee_discounts',
-  'payment_submissions',
-  'fees',
-  'online_payments',
-] as const;
+// Migrated from a Supabase Realtime subscription (postgres_changes across
+// fee_invoices/fee_payments/fee_discounts/payment_submissions/fees/
+// online_payments) to a poll — Express has no Realtime equivalent, and with
+// no Supabase session the old channel could never fire again, so this was a
+// silent no-op. Same 60s-poll shape as useNotifications.ts. Exported
+// signature unchanged, so FeesPage/StudentFeesPage/ParentFees need no edits.
+const POLL_INTERVAL_MS = 60_000;
 
 interface UseFeeRealtimeOptions {
   schoolId?: string;
@@ -50,25 +48,10 @@ export function useFeeRealtime({ schoolId, studentId, scope, enabled = true }: U
       queryClient.invalidateQueries({ queryKey: ['parent-data'] });
     };
 
-    const channel = supabase.channel(`fee-realtime-${scope}-${target.column}-${target.value}`);
-
-    FEE_REALTIME_TABLES.forEach((table) => {
-      channel.on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table,
-          filter: `${target.column}=eq.${target.value}`,
-        },
-        handleFeeChange
-      );
-    });
-
-    channel.subscribe();
+    const interval = setInterval(handleFeeChange, POLL_INTERVAL_MS);
 
     return () => {
-      supabase.removeChannel(channel);
+      clearInterval(interval);
     };
   }, [enabled, queryClient, scope, target]);
 }

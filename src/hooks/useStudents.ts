@@ -169,30 +169,19 @@ export function useStudents(filters?: {
   });
 }
 
-/**
- * ⚠️ NOT MIGRATED — no backend endpoint exists for aggregate student stats
- * (total / active / inactive / newThisMonth). The Express API only supports
- * `sectionId` and `search` filters on GET /school/students; it has no
- * isActive or createdAt query params, so this can't be computed from the
- * existing endpoint without pulling every row client-side.
- *
- * Recommend adding `GET /api/school/students/stats` to
- * student.controller.js (a handful of `prisma.student.count()` calls,
- * same shape as superadmin.controller.js's getDashboard). Left as a stub
- * so callers don't silently get wrong numbers.
- */
 export function useStudentStats() {
   const schoolId = useEffectiveSchoolId();
 
   return useQuery({
     queryKey: queryKeys.studentStats(schoolId),
     queryFn: async (): Promise<StudentStats> => {
-      throw new Error(
-        'useStudentStats: no backend endpoint yet (see comment in useStudents.ts). ' +
-        'Add GET /api/school/students/stats before using this hook.'
-      );
+      if (!schoolId) throw new Error('No school ID');
+
+      const { data } = await api.get<StudentStats>('/school/students/stats');
+      return data;
     },
-    enabled: false, // prevented from firing until the endpoint exists
+    enabled: !!schoolId,
+    staleTime: 2 * 60 * 1000,
   });
 }
 
