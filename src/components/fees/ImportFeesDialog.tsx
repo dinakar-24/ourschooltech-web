@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { queryKeys } from '@/lib/query-keys';
 import { toast } from 'sonner';
@@ -187,78 +187,32 @@ export function ImportFeesDialog({ open, onOpenChange }: Props) {
   const handleImport = useCallback(async () => {
     if (!schoolId || invoiceGroups.length === 0) return;
     setStep('importing');
-    let success = 0;
-    let failed = 0;
+    setImportProgress(50);
 
-    for (let i = 0; i < invoiceGroups.length; i++) {
-      const g = invoiceGroups[i];
-      try {
-        // Resolve student by admission_number
-        const { data: student } = await supabase
-          .from('students')
-          .select('id')
-          .eq('school_id', schoolId)
-          .eq('admission_number', g.admission_number)
-          .maybeSingle();
+    try {
+      // Grouping into multi-component invoices now happens server-side
+      // (bulkCreateFees), from the same admission_number+due_date key --
+      // send the raw valid rows, not the client-side invoiceGroups preview.
+      const { data } = await api.post('/school/bulk-upload', {
+        type: 'fees',
+        records: validRows.map(r => ({
+          admission_number: r.admission_number,
+          fee_type: r.fee_type,
+          amount: r.amount,
+          due_date: r.due_date,
+        })),
+      });
 
-        if (!student) {
-          failed++;
-          setImportProgress(Math.round(((i + 1) / invoiceGroups.length) * 100));
-          continue;
-        }
-
-        const totalAmount = g.components.reduce((s, c) => s + c.amount, 0);
-
-        // Create invoice
-        const { data: invoice, error: invErr } = await supabase
-          .from('fee_invoices')
-          .insert({
-            school_id: schoolId,
-            student_id: student.id,
-            total_amount: totalAmount,
-            paid_amount: 0,
-            balance: totalAmount,
-            status: 'pending',
-            due_date: g.due_date,
-          } as any)
-          .select('id')
-          .single();
-
-        if (invErr || !invoice) {
-          failed++;
-          setImportProgress(Math.round(((i + 1) / invoiceGroups.length) * 100));
-          continue;
-        }
-
-        // Create components
-        const comps = g.components.map(c => ({
-          invoice_id: invoice.id,
-          fee_type: c.fee_type,
-          amount: c.amount,
-        }));
-
-        const { error: compErr } = await supabase
-          .from('fee_invoice_components')
-          .insert(comps);
-
-        if (compErr) {
-          // Rollback invoice
-          await supabase.from('fee_invoices').delete().eq('id', invoice.id);
-          failed++;
-        } else {
-          success++;
-        }
-      } catch {
-        failed++;
-      }
-      setImportProgress(Math.round(((i + 1) / invoiceGroups.length) * 100));
+      setImportResult({ success: data.inserted, failed: invoiceGroups.length - data.inserted });
+    } catch {
+      setImportResult({ success: 0, failed: invoiceGroups.length });
     }
 
-    setImportResult({ success, failed });
+    setImportProgress(100);
     setStep('done');
     queryClient.invalidateQueries({ queryKey: queryKeys.allFeeInvoices });
     queryClient.invalidateQueries({ queryKey: queryKeys.allInvoiceStats });
-  }, [schoolId, invoiceGroups, queryClient]);
+  }, [schoolId, invoiceGroups, validRows, queryClient]);
 
   /* ── Download Sample ─────────────────────────────────────────────── */
 

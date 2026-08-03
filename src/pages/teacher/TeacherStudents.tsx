@@ -5,11 +5,20 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Users, Search } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useClasses } from '@/hooks/useClasses';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useDebounce } from '@/hooks/useDebounce';
+
+interface RawStudent {
+  id: string;
+  firstName: string;
+  lastName: string;
+  rollNo: string | null;
+  admissionNo: string;
+  section?: { name: string; class?: { name: string } | null } | null;
+}
 
 export default function TeacherStudents() {
   const schoolId = useEffectiveSchoolId();
@@ -21,24 +30,28 @@ export default function TeacherStudents() {
   const { data: classes } = useClasses();
   const classObj = classes?.find(c => c.name === selectedClass);
   const sections = classObj?.sections || [];
+  const sectionObj = sections.find(s => s.name === selectedSection);
 
   const { data: students, isLoading } = useQuery({
-    queryKey: ['teacher-students', schoolId, selectedClass, selectedSection, debouncedSearch],
+    queryKey: ['teacher-students', schoolId, classObj?.id, sectionObj?.id, debouncedSearch],
     queryFn: async () => {
-      let query = supabase
-        .from('students')
-        .select('id, full_name, class_name, section, roll_number, admission_number')
-        .eq('school_id', schoolId)
-        .eq('status', 'active')
-        .order('roll_number', { ascending: true });
-
-      if (selectedClass) query = query.eq('class_name', selectedClass);
-      if (selectedSection) query = query.eq('section', selectedSection);
-      if (debouncedSearch) query = query.ilike('full_name', `%${debouncedSearch}%`);
-
-      const { data, error } = await query.limit(50);
-      if (error) throw error;
-      return data || [];
+      const { data } = await api.get<{ students: RawStudent[] }>('/school/students', {
+        params: {
+          status: 'active',
+          classId: classObj?.id || undefined,
+          sectionId: sectionObj?.id || undefined,
+          search: debouncedSearch || undefined,
+          limit: 50,
+        },
+      });
+      return data.students.map(s => ({
+        id: s.id,
+        full_name: `${s.firstName} ${s.lastName}`.trim(),
+        class_name: s.section?.class?.name ?? '',
+        section: s.section?.name ?? '',
+        roll_number: s.rollNo ? Number(s.rollNo) || null : null,
+        admission_number: s.admissionNo,
+      }));
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,

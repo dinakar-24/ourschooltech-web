@@ -25,7 +25,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { IndianRupee, Users, Calendar } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useCreateSubscription, useUpdateSubscription } from '@/hooks/useSubscription';
 import { toast } from 'sonner';
 import { format, addYears } from 'date-fns';
@@ -107,33 +107,24 @@ export function ManageSubscriptionDialog({
   useEffect(() => {
     if (open && !isEditing) {
       setLoadingSchools(true);
-      supabase
-        .from('schools')
-        .select('id, name, code')
-        .eq('is_active', true)
-        .order('name')
-        .then(({ data, error }) => {
-          if (!error && data) {
-            const available = data.filter(s => !existingSchoolIds.includes(s.id));
-            setSchools(available);
-          }
-          setLoadingSchools(false);
-        });
+      api.get<{ schools: { id: string; name: string; schoolCode: string; isActive: boolean; isSuspended: boolean }[] }>('/superadmin/schools', { params: { limit: 500 } })
+        .then(({ data }) => {
+          const available = data.schools
+            .filter(s => s.isActive && !s.isSuspended && !existingSchoolIds.includes(s.id))
+            .map(s => ({ id: s.id, name: s.name, code: s.schoolCode }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          setSchools(available);
+        })
+        .finally(() => setLoadingSchools(false));
     }
   }, [open, isEditing, existingSchoolIds]);
 
   // Auto-fetch student count when school is selected
   useEffect(() => {
     if (!formData.schoolId || isEditing) return;
-    supabase
-      .from('students')
-      .select('id', { count: 'exact', head: true })
-      .eq('school_id', formData.schoolId)
-      .eq('status', 'active')
-      .then(({ count }) => {
-        if (count !== null) {
-          setFormData(prev => ({ ...prev, studentCount: String(count) }));
-        }
+    api.get<{ school: { _count: { students: number } } }>(`/superadmin/schools/${formData.schoolId}`)
+      .then(({ data }) => {
+        setFormData(prev => ({ ...prev, studentCount: String(data.school._count.students) }));
       });
   }, [formData.schoolId, isEditing]);
 

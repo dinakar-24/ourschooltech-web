@@ -284,6 +284,7 @@ export function useUpdateStudent() {
         // resolved one (see create() note above) — no className/section
         // string resolution happens here.
         ...((updates as any).sectionId && { sectionId: (updates as any).sectionId }),
+        ...((updates as any).avatar_url !== undefined && { photo: (updates as any).avatar_url }),
       });
 
       return data;

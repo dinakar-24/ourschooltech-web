@@ -1,21 +1,37 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { Link } from 'react-router-dom';
 import { Building2, MapPin, ChevronRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow } from 'date-fns';
 
+interface RawSchool {
+  id: string;
+  name: string;
+  schoolCode: string;
+  city: string | null;
+  isActive: boolean;
+  isSuspended: boolean;
+  subscriptionPlan: string | null;
+  createdAt: string;
+}
+
 export function RecentSchoolsList() {
   const { data: schools, isLoading } = useQuery({
     queryKey: ['recent-schools-dashboard'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('schools')
-        .select('id, name, code, city, is_active, subscription_status, created_at')
-        .order('created_at', { ascending: false })
-        .limit(5);
-      if (error) throw error;
-      return data;
+      const { data } = await api.get<{ schools: RawSchool[] }>('/superadmin/schools', {
+        params: { limit: 5 },
+      });
+      return data.schools.map(s => ({
+        id: s.id,
+        name: s.name,
+        code: s.schoolCode,
+        city: s.city,
+        is_active: s.isActive && !s.isSuspended,
+        subscription_status: s.subscriptionPlan,
+        created_at: s.createdAt,
+      }));
     },
     staleTime: 5 * 60 * 1000,
   });

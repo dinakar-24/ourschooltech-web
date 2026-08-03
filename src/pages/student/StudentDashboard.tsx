@@ -21,7 +21,7 @@ export default function StudentDashboard() {
   const { t } = useTranslation();
   const { data: student, isLoading: studentLoading } = useStudentProfile();
   const { data: attendanceStats, isLoading: attendanceLoading } = useStudentAttendanceStats(student?.id);
-  const { data: homework, isLoading: homeworkLoading } = useStudentHomework(student?.class_name, student?.section, student?.school_id);
+  const { data: homework, isLoading: homeworkLoading } = useStudentHomework();
   // Was the shared admin useAnnouncements() hook — that returns every active
   // announcement school-wide with no role/class targeting, so a student saw
   // teacher-only notices too. useStudentAnnouncements hits the endpoint that

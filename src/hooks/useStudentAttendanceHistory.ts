@@ -1,40 +1,50 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface AttendanceRecord {
   date: string;
   status: 'present' | 'absent' | 'late' | 'half_day';
 }
 
+interface RawAttendance {
+  date: string;
+  status: string;
+}
+
+const STATUS_MAP: Record<string, AttendanceRecord['status']> = {
+  PRESENT: 'present',
+  ABSENT: 'absent',
+  LATE: 'late',
+  HALF_DAY: 'half_day',
+};
+
 export function useStudentAttendanceHistory(studentId?: string) {
+  const { user } = useAuth();
+  const role = user?.role;
+
   return useQuery({
-    queryKey: ['student-attendance-history', studentId],
+    queryKey: ['student-attendance-history', studentId, role],
     queryFn: async (): Promise<{ records: AttendanceRecord[]; percentage: number }> => {
-      if (!studentId) throw new Error('No student ID');
+      const url = role === 'student'
+        ? '/student/attendance/history'
+        : `/parent/attendance/${studentId}/history`;
+      const { data } = await api.get<{ attendance: RawAttendance[] }>(url);
 
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('date, status')
-        .eq('student_id', studentId)
-        .order('date', { ascending: false });
-
-      if (error) throw error;
-
-      const records: AttendanceRecord[] = (data || []).map(r => ({
+      const records: AttendanceRecord[] = data.attendance.map(r => ({
         date: r.date,
-        status: r.status as AttendanceRecord['status'],
+        status: STATUS_MAP[r.status] ?? 'absent',
       }));
 
       const total = records.length;
       const present = records.filter(r => r.status === 'present').length;
       const late = records.filter(r => r.status === 'late').length;
       const halfDay = records.filter(r => r.status === 'half_day').length;
-      // Half day counts as 0.5 attendance
       const percentage = total > 0 ? Math.round(((present + late + halfDay * 0.5) / total) * 100 * 10) / 10 : 0;
 
       return { records, percentage };
     },
-    enabled: !!studentId,
+    enabled: !!studentId && !!role,
     staleTime: 5 * 60 * 1000,
   });
 }

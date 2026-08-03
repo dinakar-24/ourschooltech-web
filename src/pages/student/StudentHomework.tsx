@@ -11,14 +11,13 @@ import {
   Image as ImageIcon,
   BookX,
 } from 'lucide-react';
-import { useStudentProfile, useStudentHomework } from '@/hooks/useStudentData';
+import { useStudentHomework } from '@/hooks/useStudentData';
 import { format, isPast, isToday } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 
 export default function StudentHomework() {
   const { t } = useTranslation();
-  const { data: profile } = useStudentProfile();
-  const { data: homework, isLoading } = useStudentHomework(profile?.class_name, profile?.section, profile?.school_id);
+  const { data: homework, isLoading } = useStudentHomework();
 
   const getStatusBadge = (dueDate: string) => {
     const due = new Date(dueDate);

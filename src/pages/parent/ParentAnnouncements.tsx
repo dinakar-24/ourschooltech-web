@@ -2,33 +2,19 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Bell } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { useParentChild } from '@/hooks/useParentData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 
 export default function ParentAnnouncements() {
   const { user } = useAuth();
-  const { data: child } = useParentChild();
 
   const { data: announcements, isLoading } = useQuery({
-    queryKey: ['parent-announcements', user?.schoolId, child?.class_name],
+    queryKey: ['parent-announcements', user?.schoolId],
     queryFn: async () => {
-      if (!user?.schoolId) return [];
-      const { data, error } = await supabase
-        .from('announcements')
-        .select('*')
-        .eq('school_id', user.schoolId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      return data?.filter(a =>
-        !a.target_roles || a.target_roles.length === 0 || a.target_roles.includes('parent')
-      ).filter(a =>
-        !a.target_classes || a.target_classes.length === 0 || a.target_classes.includes(child?.class_name)
-      ) || [];
+      const { data } = await api.get<{ announcements: { id: string; title: string; content: string; createdAt: string }[] }>('/parent/announcements');
+      return data.announcements;
     },
     enabled: !!user?.schoolId,
     staleTime: 5 * 60 * 1000,
@@ -59,7 +45,7 @@ export default function ParentAnnouncements() {
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-sm">{a.title}</h4>
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-3">{a.content}</p>
-                    <p className="text-xs text-muted-foreground mt-2">{format(new Date(a.created_at), 'dd MMM yyyy')}</p>
+                    <p className="text-xs text-muted-foreground mt-2">{format(new Date(a.createdAt), 'dd MMM yyyy')}</p>
                   </div>
                 </div>
               </CardContent>

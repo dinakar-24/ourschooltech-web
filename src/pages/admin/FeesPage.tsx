@@ -30,7 +30,7 @@ import { PaymentVerificationPanel } from '@/components/fees/PaymentVerificationP
 import { useDebounce } from '@/hooks/useDebounce';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useFeeRealtime } from '@/hooks/useFeeRealtime';
-import { useFeeReports } from '@/hooks/useFeeReports';
+import { useReportGenerators } from '@/hooks/useReportGenerators';
 import { Skeleton } from '@/components/ui/skeleton';
 import { CreateInvoiceDialog } from '@/components/fees/CreateInvoiceDialog';
 import { SendReminderDialog } from '@/components/fees/SendReminderDialog';
@@ -104,7 +104,7 @@ export default function FeesPage() {
   const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
 
-  const { generateFeeSummary, generatePendingList, generatePaymentHistory, generateAllInvoices } = useFeeReports();
+  const { generateFeeSummary, generatePendingDues, generateFeeCollection, generateAllInvoices } = useReportGenerators();
 
   const debouncedSearch = useDebounce(searchInput, 400);
 
@@ -231,11 +231,11 @@ export default function FeesPage() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={generateFeeSummary}>Fee Summary Report</DropdownMenuItem>
-                    <DropdownMenuItem onClick={generatePendingList}>Pending Fees List</DropdownMenuItem>
-                    <DropdownMenuItem onClick={generatePaymentHistory}>Payment History</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => generateFeeSummary()}>Fee Summary Report</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => generatePendingDues()}>Pending Fees List</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => generateFeeCollection()}>Payment History</DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={generateAllInvoices}>All Invoices (Detailed)</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => generateAllInvoices()}>All Invoices (Detailed)</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <Button variant="outline" size="sm" onClick={() => setImportDialogOpen(true)}>
@@ -268,11 +268,11 @@ export default function FeesPage() {
                         <Download className="w-4 h-4 mr-2" /> Export Report
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
-                        <DropdownMenuItem onClick={generateFeeSummary}>Fee Summary</DropdownMenuItem>
-                        <DropdownMenuItem onClick={generatePendingList}>Pending Fees</DropdownMenuItem>
-                        <DropdownMenuItem onClick={generatePaymentHistory}>Payment History</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => generateFeeSummary()}>Fee Summary</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => generatePendingDues()}>Pending Fees</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => generateFeeCollection()}>Payment History</DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={generateAllInvoices}>All Invoices</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => generateAllInvoices()}>All Invoices</DropdownMenuItem>
                       </DropdownMenuSubContent>
                     </DropdownMenuSub>
                     {pendingCount > 0 && (

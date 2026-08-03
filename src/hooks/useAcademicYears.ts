@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
 
@@ -15,22 +14,39 @@ export interface AcademicYear {
   updated_at: string;
 }
 
+interface RawAcademicYear {
+  id: string;
+  schoolId: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  isCurrent: boolean;
+  createdAt: string;
+}
+
+function mapYear(raw: RawAcademicYear): AcademicYear {
+  return {
+    id: raw.id,
+    school_id: raw.schoolId,
+    name: raw.name,
+    start_date: raw.startDate,
+    end_date: raw.endDate,
+    is_current: raw.isCurrent,
+    created_at: raw.createdAt,
+    // AcademicYear has no updatedAt column — created_at stands in, unused
+    // by AcademicYearsPage.tsx's UI anyway.
+    updated_at: raw.createdAt,
+  };
+}
+
 export function useAcademicYears() {
   const schoolId = useEffectiveSchoolId();
 
   return useQuery({
     queryKey: ['academic-years', schoolId],
     queryFn: async () => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const { data, error } = await supabase
-        .from('academic_years')
-        .select('*')
-        .eq('school_id', schoolId)
-        .order('start_date', { ascending: false });
-
-      if (error) throw error;
-      return data as AcademicYear[];
+      const { data } = await api.get<{ years: RawAcademicYear[] }>('/school/academic-years');
+      return data.years.map(mapYear);
     },
     enabled: !!schoolId,
   });
@@ -42,17 +58,9 @@ export function useCurrentAcademicYear() {
   return useQuery({
     queryKey: ['current-academic-year', schoolId],
     queryFn: async () => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const { data, error } = await supabase
-        .from('academic_years')
-        .select('*')
-        .eq('school_id', schoolId)
-        .eq('is_current', true)
-        .single();
-
-      if (error && error.code !== 'PGRST116') throw error;
-      return data as AcademicYear | null;
+      const { data } = await api.get<{ years: RawAcademicYear[] }>('/school/academic-years');
+      const current = data.years.find(y => y.isCurrent);
+      return current ? mapYear(current) : null;
     },
     enabled: !!schoolId,
   });
@@ -60,80 +68,43 @@ export function useCurrentAcademicYear() {
 
 export function useCreateAcademicYear() {
   const queryClient = useQueryClient();
-  const schoolId = useEffectiveSchoolId();
 
   return useMutation({
-    mutationFn: async ({ name, startDate, endDate, isCurrent }: { 
-      name: string; 
+    mutationFn: async ({ name, startDate, endDate, isCurrent }: {
+      name: string;
       startDate: string;
       endDate: string;
       isCurrent?: boolean;
     }) => {
-      if (!schoolId) throw new Error('No school ID');
-
-      if (isCurrent) {
-        await supabase
-          .from('academic_years')
-          .update({ is_current: false })
-          .eq('school_id', schoolId);
-      }
-
-      const { data, error } = await supabase
-        .from('academic_years')
-        .insert({
-          school_id: schoolId,
-          name,
-          start_date: startDate,
-          end_date: endDate,
-          is_current: isCurrent || false,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const { data } = await api.post('/school/academic-years', { name, startDate, endDate, isCurrent });
+      return data.year;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['academic-years'] });
       queryClient.invalidateQueries({ queryKey: ['current-academic-year'] });
       toast.success('Academic year created successfully');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to create academic year');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to create academic year');
     },
   });
 }
 
 export function useSetCurrentAcademicYear() {
   const queryClient = useQueryClient();
-  const schoolId = useEffectiveSchoolId();
 
   return useMutation({
     mutationFn: async (yearId: string) => {
-      if (!schoolId) throw new Error('No school ID');
-
-      await supabase
-        .from('academic_years')
-        .update({ is_current: false })
-        .eq('school_id', schoolId);
-
-      const { data, error } = await supabase
-        .from('academic_years')
-        .update({ is_current: true })
-        .eq('id', yearId)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const { data } = await api.patch(`/school/academic-years/${yearId}/set-current`);
+      return data.year;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['academic-years'] });
       queryClient.invalidateQueries({ queryKey: ['current-academic-year'] });
       toast.success('Current academic year updated');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update academic year');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to update academic year');
     },
   });
 }
@@ -142,33 +113,22 @@ export function useUpdateAcademicYear() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, name, startDate, endDate }: { 
+    mutationFn: async ({ id, name, startDate, endDate }: {
       id: string;
-      name: string; 
+      name: string;
       startDate: string;
       endDate: string;
     }) => {
-      const { data, error } = await supabase
-        .from('academic_years')
-        .update({
-          name,
-          start_date: startDate,
-          end_date: endDate,
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
+      const { data } = await api.patch(`/school/academic-years/${id}`, { name, startDate, endDate });
+      return data.year;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['academic-years'] });
       queryClient.invalidateQueries({ queryKey: ['current-academic-year'] });
       toast.success('Academic year updated');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to update academic year');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to update academic year');
     },
   });
 }
@@ -178,20 +138,15 @@ export function useDeleteAcademicYear() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('academic_years')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      await api.delete(`/school/academic-years/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['academic-years'] });
       queryClient.invalidateQueries({ queryKey: ['current-academic-year'] });
       toast.success('Academic year deleted');
     },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Failed to delete academic year');
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Failed to delete academic year');
     },
   });
 }

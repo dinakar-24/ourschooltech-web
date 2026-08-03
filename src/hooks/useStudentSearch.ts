@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useDebounce } from '@/hooks/useDebounce';
 
@@ -10,6 +10,14 @@ interface StudentSearchResult {
   admission_number: string;
   class_name: string;
   section: string;
+}
+
+interface RawStudent {
+  id: string;
+  firstName: string;
+  lastName: string;
+  admissionNo: string;
+  section?: { name: string; class?: { name: string } | null } | null;
 }
 
 /**
@@ -24,19 +32,17 @@ export function useStudentSearch() {
   const { data: students = [], isLoading } = useQuery({
     queryKey: ['student-search', schoolId, debouncedSearch],
     queryFn: async (): Promise<StudentSearchResult[]> => {
-      if (!schoolId || !debouncedSearch || debouncedSearch.length < 2) return [];
+      const { data } = await api.get<{ students: RawStudent[] }>('/school/students', {
+        params: { search: debouncedSearch, status: 'active', limit: 20 },
+      });
 
-      const { data, error } = await supabase
-        .from('students')
-        .select('id, full_name, admission_number, class_name, section')
-        .eq('school_id', schoolId)
-        .eq('status', 'active')
-        .or(`full_name.ilike.%${debouncedSearch}%,admission_number.ilike.%${debouncedSearch}%`)
-        .order('full_name')
-        .limit(20);
-
-      if (error) throw error;
-      return data || [];
+      return data.students.map(s => ({
+        id: s.id,
+        full_name: `${s.firstName} ${s.lastName}`.trim(),
+        admission_number: s.admissionNo,
+        class_name: s.section?.class?.name ?? '',
+        section: s.section?.name ?? '',
+      }));
     },
     enabled: !!schoolId && debouncedSearch.length >= 2,
     staleTime: 30 * 1000,

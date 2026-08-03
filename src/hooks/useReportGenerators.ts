@@ -220,6 +220,36 @@ export function useReportGenerators() {
     }
   };
 
+  // ─── FEE SUMMARY (class-wise) ────────────────────────
+  const generateFeeSummary = async () => {
+    if (!schoolId) return;
+    const tid = toast.loading('Generating Fee Summary...');
+    try {
+      const response = await api.get('/school/reports/fees/summary', { responseType: 'blob' });
+      downloadBlob(response.data, `fee-summary-${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.dismiss(tid);
+      toast.success('Fee summary exported');
+    } catch (err) {
+      toast.dismiss(tid);
+      toast.error(await extractReportError(err));
+    }
+  };
+
+  // ─── ALL INVOICES (detailed) ─────────────────────────
+  const generateAllInvoices = async () => {
+    if (!schoolId) return;
+    const tid = toast.loading('Generating All Invoices...');
+    try {
+      const response = await api.get('/school/reports/fees/all-invoices', { responseType: 'blob' });
+      downloadBlob(response.data, `all-invoices-${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.dismiss(tid);
+      toast.success('All invoices exported');
+    } catch (err) {
+      toast.dismiss(tid);
+      toast.error(await extractReportError(err));
+    }
+  };
+
   return {
     generateStudentList,
     generateClassWise,
@@ -230,5 +260,7 @@ export function useReportGenerators() {
     generateExamResults,
     generatePerformanceAnalysis,
     generateCustomReport,
+    generateFeeSummary,
+    generateAllInvoices,
   };
 }

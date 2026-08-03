@@ -1,17 +1,14 @@
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { BookOpen, AlertCircle } from 'lucide-react';
-import { useParentChild } from '@/hooks/useParentData';
-import { useStudentHomework } from '@/hooks/useStudentData';
-import { useAuth } from '@/contexts/AuthContext';
+import { useParentChild, useChildHomework } from '@/hooks/useParentData';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 
 export default function ParentHomework() {
-  const { user } = useAuth();
   const { data: child } = useParentChild();
-  const { data: homework, isLoading } = useStudentHomework(child?.class_name, child?.section, user?.schoolId);
+  const { data: homework, isLoading } = useChildHomework(child?.id);
 
   return (
     <MobileLayout title="Homework" showBack>

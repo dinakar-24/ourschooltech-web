@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -122,61 +121,68 @@ export function useStudentAttendanceStats(studentId?: string) {
   });
 }
 
-export function useStudentHomework(className?: string, section?: string, schoolId?: string) {
+// Raw shape shared by GET /api/student/homework and /api/parent/homework/:studentId
+export interface RawHomework {
+  id: string;
+  title: string;
+  description: string | null;
+  dueDate: string;
+  attachments: string[];
+  subject?: { name: string } | null;
+}
+
+export function mapHomework(raw: RawHomework) {
+  return {
+    id: raw.id,
+    subject: raw.subject?.name ?? '',
+    title: raw.title,
+    description: raw.description,
+    due_date: raw.dueDate,
+    attachments: raw.attachments || [],
+  };
+}
+
+export function useStudentHomework() {
   return useQuery({
-    queryKey: ['student-homework', className, section, schoolId],
+    queryKey: ['student-homework'],
     queryFn: async () => {
-      if (!className || !schoolId) return [];
-
-      // Single class lookup using schoolId passed from parent
-      const { data: classData, error: classError } = await supabase
-        .from('classes')
-        .select('id')
-        .eq('name', className)
-        .eq('school_id', schoolId)
-        .single();
-
-      if (classError) return [];
-
-      const { data, error } = await supabase
-        .from('homework')
-        .select(`
-          id,subject,title,description,due_date,attachments,created_at,class_id,section_id,
-          class:classes(id, name),
-          section:sections(id, name)
-        `)
-        .eq('class_id', classData.id)
-        .gte('due_date', new Date().toISOString().split('T')[0])
-        .order('due_date', { ascending: true });
-
-      if (error) throw error;
-      
-      return data?.filter(hw => !hw.section_id || hw.section?.name === section) || [];
+      const { data } = await api.get<{ homework: RawHomework[] }>('/student/homework');
+      // The endpoint orders dueDate desc (most-recently-due first, for a
+      // general "recent homework" list); both consumer pages want soonest-
+      // due-first, matching the old direct query's ascending order.
+      return [...data.homework]
+        .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
+        .map(mapHomework);
     },
-    enabled: !!className && !!schoolId,
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
+}
+
+interface RawResult {
+  id: string;
+  marks: number;
+  grade: string | null;
+  exam?: { name: string; subject: string; maxMarks: number; examDate: string } | null;
+}
+
+function mapResult(raw: RawResult) {
+  return {
+    id: raw.id,
+    marks_obtained: raw.marks,
+    grade: raw.grade,
+    exam: raw.exam
+      ? { name: raw.exam.name, subject: raw.exam.subject, max_marks: raw.exam.maxMarks, exam_date: raw.exam.examDate }
+      : null,
+  };
 }
 
 export function useStudentResults(studentId?: string) {
   return useQuery({
     queryKey: ['student-results', studentId],
     queryFn: async () => {
-      if (!studentId) return [];
-
-      const { data, error } = await supabase
-        .from('results')
-        .select(`
-          *,
-          exam:exams(id, name, subject, max_marks, exam_date)
-        `)
-        .eq('student_id', studentId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      return data || [];
+      const { data } = await api.get<{ results: RawResult[] }>('/student/results');
+      return data.results.map(mapResult);
     },
     enabled: !!studentId,
     staleTime: 3 * 60 * 1000,

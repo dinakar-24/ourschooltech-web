@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Upload, X, Smartphone, Palette, Image, Type } from 'lucide-react';
 import { toast } from 'sonner';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
@@ -109,12 +109,12 @@ export const PwaSettingsDialog = memo(function PwaSettingsDialog({
     setSaving(true);
     try {
       const updateData: Record<string, unknown> = {
-        app_display_name: data.app_display_name || null,
-        app_short_name: data.app_short_name || null,
-        primary_color: data.primary_color,
-        accent_color: data.accent_color,
-        secondary_color: data.secondary_color,
-        background_color: data.background_color,
+        appDisplayName: data.app_display_name || null,
+        appShortName: data.app_short_name || null,
+        primaryColor: data.primary_color,
+        accentColor: data.accent_color,
+        secondaryColor: data.secondary_color,
+        backgroundColor: data.background_color,
       };
 
       // Handle logo
@@ -126,17 +126,12 @@ export const PwaSettingsDialog = memo(function PwaSettingsDialog({
 
       // Handle splash
       if (splashPreview && splashPreview !== school.splash_screen_image_url) {
-        updateData.splash_screen_image_url = splashPreview;
+        updateData.splashScreenImageUrl = splashPreview;
       } else if (!splashPreview) {
-        updateData.splash_screen_image_url = null;
+        updateData.splashScreenImageUrl = null;
       }
 
-      const { error } = await supabase
-        .from('schools')
-        .update(updateData)
-        .eq('id', school.id);
-
-      if (error) throw error;
+      await api.put(`/superadmin/schools/${school.id}`, updateData);
       queryClient.invalidateQueries({ queryKey: ['schools'] });
       toast.success('PWA settings saved! Changes will reflect on next app load.');
       onOpenChange(false);

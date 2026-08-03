@@ -1,10 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { api } from '@/lib/api';
-import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
-import { getSupabaseRange } from './usePagination';
 import { invokeEdgeFunction } from '@/lib/api';
 import { queryKeys } from '@/lib/query-keys';
 
@@ -178,48 +175,6 @@ export function useTeacherSubjects() {
   });
 }
 
-// Dead — zero callers (CreateTeacherDialog.tsx uses useCreateSchoolUser
-// instead). Left as-is; out of scope for this batch. A future teacher-
-// creation migration should probably delete this in favor of that hook, or
-// migrate this one and swap the dialog onto it — that's a real decision,
-// not made here.
-export function useCreateTeacher() {
-  const queryClient = useQueryClient();
-  const schoolId = useEffectiveSchoolId();
-
-  return useMutation({
-    mutationFn: async (teacherData: {
-      full_name: string;
-      employee_id: string;
-      email?: string;
-      phone?: string;
-      subjects?: string[];
-      classes?: string[];
-      qualification?: string;
-      joining_date?: string;
-    }) => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const { data, error } = await supabase
-        .from('teachers')
-        .insert({
-          ...teacherData,
-          school_id: schoolId,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.allTeachers });
-      queryClient.invalidateQueries({ queryKey: queryKeys.allTeacherStats });
-      queryClient.invalidateQueries({ queryKey: queryKeys.allTeacherSubjects });
-      toast.success('Teacher added successfully');
-    },
-  });
-}
 
 export function useUpdateTeacher() {
   const queryClient = useQueryClient();

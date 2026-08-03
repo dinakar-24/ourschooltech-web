@@ -1,42 +1,35 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
+import { useClasses } from '@/hooks/useClasses';
 
 /**
- * Returns all unique sections used across students in the current school.
- * Optionally filter by class name.
- * Falls back to A-D if no students exist yet.
+ * Returns all section names defined for the current school (optionally
+ * filtered by class name). Falls back to A-D if no sections exist yet.
  */
 export function useSections(className?: string) {
   const schoolId = useEffectiveSchoolId();
+  const { data: classes } = useClasses();
 
   return useQuery({
-    queryKey: ['dynamic-sections', schoolId, className],
+    queryKey: ['dynamic-sections', schoolId, className, classes],
     queryFn: async () => {
-      if (!schoolId) return ['A', 'B', 'C', 'D'];
+      if (!classes) return ['A', 'B', 'C', 'D'];
 
-      let query = supabase
-        .from('students')
-        .select('section')
-        .eq('school_id', schoolId);
+      const relevant = className && className !== 'All Classes'
+        ? classes.filter(c => c.name === className)
+        : classes;
 
-      if (className && className !== 'All Classes') {
-        query = query.eq('class_name', className);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const unique = [...new Set((data || []).map(d => d.section).filter(Boolean))].sort();
+      const unique = [...new Set(relevant.flatMap(c => c.sections.map(s => s.name)))].sort();
       return unique.length > 0 ? unique : ['A', 'B', 'C', 'D'];
     },
-    enabled: !!schoolId,
+    enabled: !!schoolId && !!classes,
     staleTime: 5 * 60 * 1000,
   });
 }
 
 /**
- * Returns all unique fee types used across fees in the current school.
+ * Returns all unique fee types used across invoices in the current school.
  */
 export function useFeeTypes() {
   const schoolId = useEffectiveSchoolId();
@@ -44,17 +37,8 @@ export function useFeeTypes() {
   return useQuery({
     queryKey: ['dynamic-fee-types', schoolId],
     queryFn: async () => {
-      if (!schoolId) return [];
-
-      const { data, error } = await supabase
-        .from('fees')
-        .select('fee_type')
-        .eq('school_id', schoolId);
-
-      if (error) throw error;
-
-      const unique = [...new Set((data || []).map(d => d.fee_type).filter(Boolean))].sort();
-      return unique;
+      const { data } = await api.get<{ feeTypes: string[] }>('/school/fees/types');
+      return data.feeTypes;
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,

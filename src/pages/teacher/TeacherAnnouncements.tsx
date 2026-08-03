@@ -2,11 +2,10 @@ import { MobileLayout } from '@/components/layout/MobileLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Bell, AlertCircle } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { Skeleton } from '@/components/ui/skeleton';
 import { format } from 'date-fns';
-import { Badge } from '@/components/ui/badge';
 
 export default function TeacherAnnouncements() {
   const schoolId = useEffectiveSchoolId();
@@ -14,17 +13,8 @@ export default function TeacherAnnouncements() {
   const { data: announcements, isLoading } = useQuery({
     queryKey: ['teacher-announcements', schoolId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('announcements')
-        .select('*')
-        .eq('school_id', schoolId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(25);
-      if (error) throw error;
-      return data?.filter(a =>
-        !a.target_roles || a.target_roles.length === 0 || a.target_roles.includes('teacher')
-      ) || [];
+      const { data } = await api.get<{ announcements: { id: string; title: string; content: string; createdAt: string }[] }>('/teacher/announcements');
+      return data.announcements;
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,
@@ -52,14 +42,9 @@ export default function TeacherAnnouncements() {
                     <Bell className="w-5 h-5 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <h4 className="font-semibold text-sm truncate">{a.title}</h4>
-                      {a.target_classes && a.target_classes.length > 0 && (
-                        <Badge variant="outline" className="text-[10px] shrink-0 ml-2">{a.target_classes.join(', ')}</Badge>
-                      )}
-                    </div>
+                    <h4 className="font-semibold text-sm truncate">{a.title}</h4>
                     <p className="text-sm text-muted-foreground line-clamp-2">{a.content}</p>
-                    <p className="text-xs text-muted-foreground mt-2">{format(new Date(a.created_at), 'dd MMM yyyy, hh:mm a')}</p>
+                    <p className="text-xs text-muted-foreground mt-2">{format(new Date(a.createdAt), 'dd MMM yyyy, hh:mm a')}</p>
                   </div>
                 </div>
               </CardContent>

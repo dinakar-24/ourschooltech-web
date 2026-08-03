@@ -24,7 +24,7 @@ import {
 import { useSubscription, useSubscriptionPayments, SubscriptionPayment } from '@/hooks/useSubscription';
 import { useRazorpay } from '@/hooks/useRazorpay';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { format, differenceInDays } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -298,15 +298,8 @@ export default function SubscriptionPage() {
     setCountLoading(true);
     const fetchCount = async () => {
       try {
-        const { count, error } = await supabase
-          .from('students')
-          .select('id', { count: 'exact', head: true })
-          .eq('school_id', user.schoolId)
-          .eq('status', 'active');
-        if (error) {
-          console.error('Failed to fetch student count:', error);
-        }
-        setLiveStudentCount(count ?? 0);
+        const { data } = await api.get('/school/students', { params: { status: 'active', limit: 1 } });
+        setLiveStudentCount(data.pagination?.total ?? 0);
       } catch (err) {
         console.error('Unexpected error fetching student count:', err);
       } finally {

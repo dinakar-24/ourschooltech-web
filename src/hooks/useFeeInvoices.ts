@@ -85,7 +85,7 @@ interface InvoiceFilters {
 
 // ─── Raw API shapes + mapping ────────────────────────────────────────
 
-interface RawInvoice {
+export interface RawInvoice {
   id: string;
   schoolId: string;
   studentId: string;
@@ -119,7 +119,7 @@ interface RawInvoice {
 
 const num = (v: string | number | null | undefined) => Number(v ?? 0);
 
-function mapInvoice(raw: RawInvoice): FeeInvoice {
+export function mapInvoice(raw: RawInvoice): FeeInvoice {
   const s = raw.student;
   const parent = s?.parents?.[0] ?? null;
 

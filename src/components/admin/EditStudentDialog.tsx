@@ -20,7 +20,7 @@ import { Loader2 } from 'lucide-react';
 import { useUpdateStudent, Student } from '@/hooks/useStudents';
 import { useClasses } from '@/hooks/useClasses';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface EditStudentDialogProps {
@@ -35,20 +35,16 @@ export function EditStudentDialog({ student, open, onOpenChange, schoolId: overr
   const { data: hookClasses } = useClasses();
 
   // For Super Admin: fetch classes directly using the student's school
+  // (they have no schoolId of their own, so useClasses()'s tenant-scoped
+  // endpoint 404s for them — same reasoning as updateStudentAsSuperAdmin).
   const effectiveSchoolId = overrideSchoolId || student?.school_id;
   const { data: directClasses } = useQuery({
     queryKey: ['classes-direct', effectiveSchoolId],
     queryFn: async () => {
-      const { data: cls } = await supabase
-        .from('classes').select('id, name, display_order').eq('school_id', effectiveSchoolId!).order('display_order');
-      const classIds = (cls || []).map(c => c.id);
-      if (!classIds.length) return [];
-      const { data: secs } = await supabase
-        .from('sections').select('id, name, class_id').in('class_id', classIds).order('name');
-      return (cls || []).map(c => ({
-        ...c,
-        sections: (secs || []).filter(s => s.class_id === c.id),
-      }));
+      const { data } = await api.get<{ classes: { id: string; name: string; sections: { id: string; name: string }[] }[] }>(
+        `/superadmin/schools/${effectiveSchoolId}/classes`
+      );
+      return data.classes;
     },
     enabled: open && !!effectiveSchoolId,
   });
@@ -111,16 +107,6 @@ export function EditStudentDialog({ student, open, onOpenChange, schoolId: overr
       status: form.status,
       avatar_url: form.avatar_url,
     } as any);
-
-    // Sync avatar to profile if student has a user_id
-    if (form.avatar_url !== (student as any).avatar_url && (student as any).user_id) {
-      try {
-        const { supabase } = await import('@/integrations/supabase/client');
-        await supabase.from('profiles').update({ avatar_url: form.avatar_url }).eq('id', (student as any).user_id);
-      } catch (e) {
-        console.error('Failed to sync avatar to profile:', e);
-      }
-    }
 
     onOpenChange(false);
   };

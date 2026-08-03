@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { mapHomework, type RawHomework } from '@/hooks/useStudentData';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Migrated from Supabase (RPCs get_parent_dashboard/get_parent_children,
@@ -210,12 +211,12 @@ export function useChildFeeStats(studentId?: string) {
 
 /** Raw shape of GET /api/parent/homework/:studentId */
 interface RawHomeworkResponse {
-  homework: any[];
+  homework: RawHomework[];
 }
 
 async function fetchHomework(studentId: string) {
   const { data } = await api.get<RawHomeworkResponse>(`/parent/homework/${studentId}`);
-  return data.homework;
+  return data.homework.map(mapHomework);
 }
 
 export function useChildHomework(studentId?: string) {
