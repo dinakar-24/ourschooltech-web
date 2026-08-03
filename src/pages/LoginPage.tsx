@@ -7,7 +7,7 @@ import { SuperAdminOTPLogin } from '@/components/auth/SuperAdminOTPLogin';
 import { LoginSplash } from '@/components/login/LoginSplash';
 import { Input } from '@/components/ui/input';
 import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { validateEmail, friendlyErrorMessage } from '@/lib/error-utils';
 
 type LoginStep = 'splash' | 'email' | 'password' | 'superadmin';
@@ -42,13 +42,10 @@ const roleIcons: Record<string, string> = {
   student: '🎓',
 };
 
-/** Races an RPC call against a timeout */
-async function rpcWithTimeout(
-  rpcCall: () => PromiseLike<{ data: any; error: any }>,
-  timeoutMs: number
-): Promise<{ data: any; error: any }> {
+/** Races a promise against a timeout */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
-    Promise.resolve(rpcCall()),
+    promise,
     new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('TIMEOUT')), timeoutMs)
     ),
@@ -107,41 +104,28 @@ export default function LoginPage() {
     setLookupLoading(true);
     setError('');
 
-    // ⚠️ NOT MIGRATED — BLOCKED.
-    //
-    // Needs: GET /api/auth/lookup?email=  (does not exist)
-    //   returns { found, role, school_id, school_name, logo_url }
-    //   must be PUBLIC (runs pre-auth) and rate-limited like the OTP routes —
-    //   it is by design a user-enumeration surface, so it should return the
-    //   minimum the login flow needs and nothing more.
-    //
-    // Everything after this point already runs through Express: the password
-    // path calls AuthContext.login() (migrated) and the super-admin path uses
-    // SuperAdminOTPLogin (migrated). Only this lookup still needs Supabase.
-    const doLookup = () => supabase.rpc('lookup_user_by_email', { _email: email.trim() });
+    const doLookup = () => api.get('/auth/lookup', { params: { email: email.trim() } });
 
     try {
       let result: any;
       try {
-        const { data, error: rpcError } = await rpcWithTimeout(doLookup, 12000);
-        if (rpcError) throw rpcError;
+        const { data } = await withTimeout(doLookup(), 12000);
         result = data;
       } catch (firstErr: any) {
         if (firstErr.message === 'TIMEOUT') {
           // Retry once
           try {
-            const { data, error: rpcError } = await rpcWithTimeout(doLookup, 12000);
-            if (rpcError) throw rpcError;
+            const { data } = await withTimeout(doLookup(), 12000);
             result = data;
           } catch (retryErr: any) {
             throw new Error(
               retryErr.message === 'TIMEOUT'
                 ? 'Taking too long. Please check your connection and try again.'
-                : (retryErr.message || 'Failed to look up account.')
+                : (retryErr?.response?.data?.error || retryErr.message || 'Failed to look up account.')
             );
           }
         } else {
-          throw firstErr;
+          throw new Error(firstErr?.response?.data?.error || firstErr.message || 'Failed to look up account.');
         }
       }
 
