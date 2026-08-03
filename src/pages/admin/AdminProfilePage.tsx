@@ -17,7 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -78,12 +78,15 @@ export default function AdminProfilePage() {
   const { data: profileData } = useQuery({
     queryKey: ['admin-profile', user?.id],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('profiles')
-        .select('full_name, phone, email, created_at')
-        .eq('id', user!.id)
-        .single();
-      return data;
+      const { data } = await api.get<{ admin: { firstName: string; lastName: string; phone: string | null; photo: string | null; createdAt: string; user: { email: string } } }>('/school/profile');
+      const a = data.admin;
+      return {
+        full_name: `${a.firstName} ${a.lastName}`.trim(),
+        phone: a.phone,
+        photo: a.photo,
+        email: a.user.email,
+        created_at: a.createdAt,
+      };
     },
     enabled: !!user?.id,
   });
@@ -91,12 +94,8 @@ export default function AdminProfilePage() {
   const { data: schoolData } = useQuery({
     queryKey: ['school-details', schoolId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('schools')
-        .select('name, address, city, email, phone, logo, code')
-        .eq('id', schoolId)
-        .single();
-      return data;
+      const { data } = await api.get<{ school: { name: string; address: string | null; city: string | null; email: string | null; phone: string | null; schoolCode: string } }>('/school/info');
+      return { ...data.school, code: data.school.schoolCode, logo: null as string | null };
     },
     enabled: !!schoolId,
   });
@@ -122,16 +121,17 @@ export default function AdminProfilePage() {
     if (!profileName.trim()) { toast.error('Name is required'); return; }
     setSavingProfile(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ full_name: profileName.trim(), phone: profilePhone.trim() || null })
-        .eq('id', user!.id);
-      if (error) throw error;
+      const [firstName, ...rest] = profileName.trim().split(' ');
+      await api.patch('/school/profile', {
+        firstName,
+        lastName: rest.join(' ') || firstName,
+        phone: profilePhone.trim() || null,
+      });
       toast.success('Profile updated');
       setEditingProfile(false);
       queryClient.invalidateQueries({ queryKey: ['admin-profile'] });
     } catch (err: any) {
-      toast.error(err.message || 'Failed to update profile');
+      toast.error(err?.response?.data?.error || err.message || 'Failed to update profile');
     } finally {
       setSavingProfile(false);
     }
@@ -141,21 +141,17 @@ export default function AdminProfilePage() {
     if (!schoolId) return;
     setSavingSchool(true);
     try {
-      const { error } = await supabase
-        .from('schools')
-        .update({
-          name: schoolName.trim(),
-          address: schoolAddress.trim(),
-          city: schoolCity.trim(),
-          phone: schoolPhone.trim() || null,
-        })
-        .eq('id', schoolId);
-      if (error) throw error;
+      await api.patch('/school/info', {
+        name: schoolName.trim(),
+        address: schoolAddress.trim(),
+        city: schoolCity.trim(),
+        phone: schoolPhone.trim() || null,
+      });
       toast.success('School info updated');
       setEditingSchool(false);
       queryClient.invalidateQueries({ queryKey: ['school-details'] });
     } catch (err: any) {
-      toast.error(err.message || 'Failed to update school info');
+      toast.error(err?.response?.data?.error || err.message || 'Failed to update school info');
     } finally {
       setSavingSchool(false);
     }
@@ -192,7 +188,7 @@ export default function AdminProfilePage() {
                   value={user?.avatar}
                   onChange={async (url) => {
                     if (user?.id) {
-                      await supabase.from('profiles').update({ avatar_url: url }).eq('id', user.id);
+                      await api.patch('/school/profile', { photo: url });
                       queryClient.invalidateQueries({ queryKey: ['admin-profile'] });
                     }
                   }}

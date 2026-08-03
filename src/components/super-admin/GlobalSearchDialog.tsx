@@ -4,7 +4,7 @@ import { Search, Building2, User, X, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
 import { Input } from '@/components/ui/input';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useIsMobile } from '@/hooks/use-mobile';
 
@@ -38,39 +38,29 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
 
     setLoading(true);
     try {
-      const pattern = `%${q}%`;
-
       const [schoolsRes, usersRes] = await Promise.all([
-        supabase
-          .from('schools')
-          .select('id, name, code, city')
-          .or(`name.ilike.${pattern},code.ilike.${pattern},city.ilike.${pattern}`)
-          .limit(5),
-        supabase
-          .from('profiles')
-          .select('id, full_name, email, school_id')
-          .or(`full_name.ilike.${pattern},email.ilike.${pattern}`)
-          .limit(5),
+        api.get<{ schools: { id: string; name: string; schoolCode: string; city: string | null }[] }>('/superadmin/schools', { params: { search: q, limit: 5 } }),
+        api.get<{ users: { id: string; fullName: string; email: string }[] }>('/superadmin/users', { params: { search: q, limit: 5 } }),
       ]);
 
       const mapped: SearchResult[] = [];
 
-      (schoolsRes.data || []).forEach((s) =>
+      schoolsRes.data.schools.forEach((s) =>
         mapped.push({
           id: s.id,
           type: 'school',
           title: s.name,
-          subtitle: `${s.code} · ${s.city}`,
+          subtitle: `${s.schoolCode} · ${s.city ?? ''}`,
           icon: 'school',
           route: '/super-admin/schools',
         })
       );
 
-      (usersRes.data || []).forEach((u) =>
+      usersRes.data.users.forEach((u) =>
         mapped.push({
           id: u.id,
           type: 'user',
-          title: u.full_name,
+          title: u.fullName,
           subtitle: u.email,
           icon: 'user',
           route: '/super-admin/users',

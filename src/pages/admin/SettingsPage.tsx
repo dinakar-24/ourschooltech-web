@@ -20,7 +20,6 @@ import {
   CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
 import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
@@ -90,21 +89,16 @@ export default function SettingsPage() {
     }
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('schools')
-        .update({
-          name: schoolName.trim(),
-          address: schoolAddress.trim(),
-          city: schoolCity.trim(),
-          email: schoolEmail.trim() || null,
-          phone: schoolPhone.trim() || null,
-        })
-        .eq('id', schoolId);
-
-      if (error) throw error;
+      await api.patch('/school/info', {
+        name: schoolName.trim(),
+        address: schoolAddress.trim(),
+        city: schoolCity.trim(),
+        email: schoolEmail.trim() || null,
+        phone: schoolPhone.trim() || null,
+      });
       toast.success('School information updated successfully');
     } catch (err: any) {
-      toast.error(err.message || 'Failed to save changes');
+      toast.error(err?.response?.data?.error || err.message || 'Failed to save changes');
     } finally {
       setSaving(false);
     }
