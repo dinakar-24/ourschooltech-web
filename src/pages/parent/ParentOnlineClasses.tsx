@@ -1,5 +1,6 @@
 import { MobileLayout } from '@/components/layout/MobileLayout';
-import { useOnlineClasses } from '@/hooks/useOnlineClasses';
+import { useChildOnlineClasses } from '@/hooks/useOnlineClasses';
+import { useParentChild } from '@/hooks/useParentData';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,10 +9,11 @@ import { format, isFuture } from 'date-fns';
 import { EmptyState } from '@/components/ui/data-states';
 
 export default function ParentOnlineClasses() {
-  const { data: classes = [], isLoading } = useOnlineClasses();
+  const { data: child } = useParentChild();
+  const { data: classes = [], isLoading } = useChildOnlineClasses(child?.id);
 
-  const upcoming = classes.filter(c => c.status === 'scheduled' && isFuture(new Date(c.scheduled_at)));
-  const past = classes.filter(c => c.status !== 'scheduled' || !isFuture(new Date(c.scheduled_at)));
+  const upcoming = classes.filter(c => c.status === 'SCHEDULED' && isFuture(new Date(c.scheduled_at)));
+  const past = classes.filter(c => c.status !== 'SCHEDULED' || !isFuture(new Date(c.scheduled_at)));
 
   return (
     <MobileLayout title="Online Classes" showBack>
@@ -60,7 +62,7 @@ export default function ParentOnlineClasses() {
                       <div className="flex items-center gap-2">
                         <Video className="w-4 h-4 text-muted-foreground" />
                         <h3 className="font-medium text-sm">{cls.title}</h3>
-                        <Badge variant="secondary" className="ml-auto capitalize text-[10px]">{cls.status}</Badge>
+                        <Badge variant="secondary" className="ml-auto capitalize text-[10px]">{cls.status.toLowerCase()}</Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">{format(new Date(cls.scheduled_at), 'dd MMM yyyy, hh:mm a')}</p>
                     </CardContent>
