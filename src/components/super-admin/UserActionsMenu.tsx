@@ -23,14 +23,12 @@ import {
   Ban,
   CheckCircle,
   KeyRound,
-  Copy,
   Eye,
   EyeOff,
   ShieldAlert,
 } from 'lucide-react';
 import { useManageUser } from '@/hooks/useManageUser';
-import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface UserActionsMenuProps {
@@ -58,11 +56,8 @@ export function UserActionsMenu({
   currentPhone,
   onEditOverride,
 }: UserActionsMenuProps) {
-  const { user } = useAuth();
   const { manageUser, isProcessing } = useManageUser();
   const [editOpen, setEditOpen] = useState(false);
-  const [tempPassword, setTempPassword] = useState('');
-  const [tempPassDialogOpen, setTempPassDialogOpen] = useState(false);
 
   // Password confirmation state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -97,8 +92,8 @@ export function UserActionsMenu({
     },
     reset_password: {
       title: 'Reset Password',
-      description: `Generate a temporary password for ${userName}. You'll need to share it securely.`,
-      button: 'Reset Password',
+      description: `Send ${userName} a password reset email. They'll set their own new password.`,
+      button: 'Send Reset Email',
       variant: 'default',
     },
   };
@@ -111,53 +106,28 @@ export function UserActionsMenu({
   };
 
   const handleConfirm = async () => {
-    if (!pendingAction || !password || !user?.email) return;
+    if (!pendingAction || !password) return;
 
     setVerifying(true);
     try {
-      // ⚠️ Gate deliberately NOT migrated yet.
-      //
-      // POST /api/auth/verify-password now exists and would fix this check —
-      // but the actions it guards (useManageUser → the `manage-user` edge
-      // function) have no Express equivalent yet. Swapping only the gate would
-      // let the user pass the password prompt and then hit a different,
-      // more confusing failure. Migrate both together.
-      //
-      // Net effect today: signInWithPassword always errors, so this reports
-      // "Incorrect password" and the action aborts — it fails closed.
-      const { error } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password,
-      });
-
-      if (error) {
-        toast.error('Incorrect password. Please try again.');
-        setVerifying(false);
+      // Re-confirm the caller's own password via Express, same pattern as
+      // DeleteSchoolDialog/ApplyDiscountDialog/SystemAnnouncementsPage.
+      try {
+        await api.post('/auth/verify-password', { password });
+      } catch (err: any) {
+        toast.error(
+          err?.response?.status === 401
+            ? 'Incorrect password. Please try again.'
+            : err?.response?.data?.error || 'Unable to verify identity'
+        );
         return;
       }
 
-      if (pendingAction === 'delete') {
-        const result = await manageUser({ action: 'delete', user_id: userId });
-        if (result.success) {
-          setConfirmOpen(false);
-          onActionComplete('delete', userId);
-        }
-      } else if (pendingAction === 'disable' || pendingAction === 'enable') {
-        const result = await manageUser({ action: pendingAction, user_id: userId });
-        if (result.success) {
-          setConfirmOpen(false);
-          onActionComplete(pendingAction, userId);
-        }
-      } else if (pendingAction === 'reset_password') {
-        const result = await manageUser({ action: 'reset_password', user_id: userId });
-        if (result.success && result.temp_password) {
-          setTempPassword(result.temp_password);
-          setConfirmOpen(false);
-          setTempPassDialogOpen(true);
-        }
+      const result = await manageUser({ action: pendingAction, user_id: userId });
+      if (result.success) {
+        setConfirmOpen(false);
+        onActionComplete(pendingAction, userId);
       }
-    } catch {
-      toast.error('Verification failed');
     } finally {
       setVerifying(false);
     }
@@ -175,11 +145,6 @@ export function UserActionsMenu({
       setEditOpen(false);
       onActionComplete('update_profile', userId);
     }
-  };
-
-  const copyPassword = () => {
-    navigator.clipboard.writeText(tempPassword);
-    toast.success('Password copied to clipboard');
   };
 
   const currentAction = pendingAction ? actionLabels[pendingAction] : null;
@@ -302,24 +267,6 @@ export function UserActionsMenu({
               </Button>
             </div>
           </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* Temporary Password Display */}
-      <Dialog open={tempPassDialogOpen} onOpenChange={setTempPassDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Temporary Password</DialogTitle>
-            <DialogDescription>
-              Share this password securely with {userName}. They should change it after login.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-2 p-3 bg-muted rounded-lg font-mono text-sm">
-            <span className="flex-1 break-all">{tempPassword}</span>
-            <Button variant="ghost" size="icon" onClick={copyPassword} className="shrink-0">
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
         </DialogContent>
       </Dialog>
     </>
