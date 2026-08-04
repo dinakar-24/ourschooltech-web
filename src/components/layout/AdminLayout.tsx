@@ -322,12 +322,25 @@ export function AdminLayout() {
   // (derived below, after expandedItems) is what the render actually uses.
   const [isHoverExpanded, setIsHoverExpanded] = useState(false);
   const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     return () => {
       if (collapseTimeoutRef.current) clearTimeout(collapseTimeoutRef.current);
     };
   }, []);
+
+  // Collapsing (icon-only) means less content in the nav than expanded --
+  // group labels shrink to dividers, open submenus disappear entirely. If
+  // the nav was scrolled down while expanded, the browser clamps scrollTop
+  // to fit the now-shorter content the instant it collapses, which reads as
+  // the whole sidebar snapping upward out of nowhere. Reset explicitly (and
+  // smoothly) instead of leaving that clamp to happen as an abrupt jump.
+  useEffect(() => {
+    if (effectiveCollapsed) {
+      navRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [effectiveCollapsed]);
 
   const handleSidebarMouseEnter = () => {
     if (!isCollapsed) return;
@@ -381,7 +394,7 @@ export function AdminLayout() {
     navigate('/login');
   };
 
-  const SidebarContent = () => (
+  const SidebarContent = ({ withNavRef }: { withNavRef?: boolean } = {}) => (
     <>
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border flex items-center justify-between">
@@ -411,7 +424,7 @@ export function AdminLayout() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto py-2 px-2 scrollbar-thin">
+      <nav ref={withNavRef ? navRef : undefined} className="flex-1 overflow-y-auto py-2 px-2 scrollbar-thin">
         <div className="space-y-3">
           {menuGroups.map((section) => {
             const visibleItems = section.items.filter(item => {
@@ -538,7 +551,7 @@ export function AdminLayout() {
           effectiveCollapsed ? "w-16" : "w-64"
         )}
       >
-        <SidebarContent />
+        <SidebarContent withNavRef />
       </aside>
 
       {/* Mobile Menu Overlay */}
