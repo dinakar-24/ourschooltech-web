@@ -33,7 +33,9 @@ import { queryKeys } from '@/lib/query-keys';
 
 export type AppRole = 'super_admin' | 'school_admin' | 'teacher' | 'parent' | 'student';
 
-const ROLE_TO_API: Record<AppRole, string> = {
+// Exported for reuse by useSystemAnnouncements.ts (same Role enum, same
+// lowercase-frontend/uppercase-API split, different model).
+export const ROLE_TO_API: Record<AppRole, string> = {
   super_admin: 'SUPER_ADMIN',
   school_admin: 'SCHOOL_ADMIN',
   teacher: 'TEACHER',
@@ -41,7 +43,7 @@ const ROLE_TO_API: Record<AppRole, string> = {
   student: 'STUDENT',
 };
 
-const ROLE_FROM_API: Record<string, AppRole> = {
+export const ROLE_FROM_API: Record<string, AppRole> = {
   SUPER_ADMIN: 'super_admin',
   SCHOOL_ADMIN: 'school_admin',
   TEACHER: 'teacher',

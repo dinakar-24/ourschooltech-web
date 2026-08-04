@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useAuth } from '@/contexts/AuthContext';
 import { SuperAdminLayout } from '@/components/layout/SuperAdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,51 +40,54 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Plus, Search, Bell, Pencil, Trash2, AlertTriangle, Info, AlertCircle, ShieldAlert, Eye, EyeOff } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { AppRole } from '@/hooks/useAnnouncements';
+import {
+  SystemAnnouncement,
+  AnnouncementPriority,
+  useSystemAnnouncements,
+  useCreateSystemAnnouncement,
+  useUpdateSystemAnnouncement,
+  useToggleSystemAnnouncement,
+  useDeleteSystemAnnouncement,
+} from '@/hooks/useSystemAnnouncements';
 
-interface SystemAnnouncement {
-  id: string;
-  title: string;
-  content: string;
-  priority: string;
-  target_roles: string[] | null;
-  is_active: boolean;
-  expires_at: string | null;
-  created_at: string;
-}
+const priorityOptions: { value: AnnouncementPriority; label: string }[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'high', label: 'High' },
+  { value: 'urgent', label: 'Urgent' },
+];
 
-const priorityOptions = [
-  { value: 'low', label: 'Low', color: 'secondary' },
-  { value: 'normal', label: 'Normal', color: 'default' },
-  { value: 'high', label: 'High', color: 'warning' },
-  { value: 'urgent', label: 'Urgent', color: 'destructive' },
-] as const;
-
-const roleOptions = [
+const roleOptions: { value: AppRole; label: string }[] = [
   { value: 'school_admin', label: 'School Admins' },
   { value: 'teacher', label: 'Teachers' },
   { value: 'parent', label: 'Parents' },
   { value: 'student', label: 'Students' },
 ];
 
+const defaultForm = {
+  title: '',
+  content: '',
+  priority: 'normal' as AnnouncementPriority,
+  target_roles: [] as AppRole[],
+  expires_at: '',
+};
+
 export default function SystemAnnouncementsPage() {
   const isMobile = useIsMobile();
-  const { user } = useAuth();
-  const [announcements, setAnnouncements] = useState<SystemAnnouncement[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] = useState<SystemAnnouncement | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    content: '',
-    priority: 'normal',
-    targetRoles: [] as string[],
-    expiresAt: '',
-  });
+  const [formData, setFormData] = useState(defaultForm);
+
+  const { data: announcements = [], isLoading } = useSystemAnnouncements();
+  const createMutation = useCreateSystemAnnouncement();
+  const updateMutation = useUpdateSystemAnnouncement();
+  const toggleMutation = useToggleSystemAnnouncement();
+  const deleteMutation = useDeleteSystemAnnouncement();
 
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -95,69 +97,18 @@ export default function SystemAnnouncementsPage() {
   const [showDeletePassword, setShowDeletePassword] = useState(false);
   const [deleteVerifying, setDeleteVerifying] = useState(false);
 
-  useEffect(() => {
-    fetchAnnouncements();
-  }, []);
-
-  const fetchAnnouncements = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('system_announcements')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setAnnouncements(data || []);
-    } catch (error) {
-      console.error('Error fetching announcements:', error);
-      toast.error('Failed to load announcements');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
 
-    try {
-      const targetRolesTyped = formData.targetRoles.length > 0 
-        ? formData.targetRoles as ('super_admin' | 'school_admin' | 'teacher' | 'parent' | 'student')[]
-        : null;
-
-      const payload = {
-        title: formData.title,
-        content: formData.content,
-        priority: formData.priority,
-        target_roles: targetRolesTyped,
-        expires_at: formData.expiresAt || null,
-      };
-
-      if (editingAnnouncement) {
-        const { error } = await supabase
-          .from('system_announcements')
-          .update(payload)
-          .eq('id', editingAnnouncement.id);
-
-        if (error) throw error;
-        toast.success('Announcement updated successfully');
-      } else {
-        const { error } = await supabase
-          .from('system_announcements')
-          .insert(payload);
-
-        if (error) throw error;
-        toast.success('Announcement created successfully');
-      }
-
-      setIsDialogOpen(false);
-      resetForm();
-      fetchAnnouncements();
-    } catch (error: any) {
-      console.error('Error saving announcement:', error);
-      toast.error(error.message || 'Failed to save announcement');
-    } finally {
-      setSubmitting(false);
+    if (editingAnnouncement) {
+      updateMutation.mutate(
+        { id: editingAnnouncement.id, ...formData },
+        { onSuccess: () => { setIsDialogOpen(false); resetForm(); } }
+      );
+    } else {
+      createMutation.mutate(formData, {
+        onSuccess: () => { setIsDialogOpen(false); resetForm(); },
+      });
     }
   };
 
@@ -167,8 +118,8 @@ export default function SystemAnnouncementsPage() {
       title: announcement.title,
       content: announcement.content,
       priority: announcement.priority,
-      targetRoles: announcement.target_roles || [],
-      expiresAt: announcement.expires_at ? announcement.expires_at.split('T')[0] : '',
+      target_roles: announcement.target_roles,
+      expires_at: announcement.expires_at ? announcement.expires_at.split('T')[0] : '',
     });
     setIsDialogOpen(true);
   };
@@ -182,61 +133,33 @@ export default function SystemAnnouncementsPage() {
   };
 
   const handleDeleteConfirmed = async () => {
-    if (!deletingId || !deletePassword || !user?.email) return;
+    if (!deletingId || !deletePassword) return;
 
     setDeleteVerifying(true);
     try {
-      // ⚠️ Gate deliberately NOT migrated yet. POST /auth/verify-password
-      // exists, but the delete it guards targets `system_announcements`, which
-      // has no Prisma model (the existing Announcement model is school-scoped,
-      // not platform-wide). Fixing only the gate would move the failure one
-      // step later. Migrate both together.
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user.email,
-        password: deletePassword,
-      });
-
-      if (authError) {
-        toast.error('Incorrect password. Please try again.');
-        setDeleteVerifying(false);
+      // Re-confirm the super admin's own password via Express. The previous
+      // supabase.auth.signInWithPassword re-auth always errors now, which
+      // made this gate fail closed and blocked deletion entirely.
+      try {
+        await api.post('/auth/verify-password', { password: deletePassword });
+      } catch (err: any) {
+        toast.error(
+          err?.response?.status === 401
+            ? 'Incorrect password. Please try again.'
+            : err?.response?.data?.error || 'Unable to verify identity'
+        );
         return;
       }
 
-      const { error } = await supabase
-        .from('system_announcements')
-        .delete()
-        .eq('id', deletingId);
-
-      if (error) throw error;
-      toast.success('Announcement deleted');
+      await deleteMutation.mutateAsync(deletingId);
       setDeleteConfirmOpen(false);
-      fetchAnnouncements();
-    } catch (error: any) {
-      console.error('Error deleting announcement:', error);
-      toast.error(error.message || 'Failed to delete announcement');
     } finally {
       setDeleteVerifying(false);
     }
   };
 
-  const toggleActive = async (id: string, currentStatus: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('system_announcements')
-        .update({ is_active: !currentStatus })
-        .eq('id', id);
-
-      if (error) throw error;
-      toast.success(`Announcement ${!currentStatus ? 'activated' : 'deactivated'}`);
-      fetchAnnouncements();
-    } catch (error: any) {
-      console.error('Error toggling announcement:', error);
-      toast.error(error.message || 'Failed to update announcement');
-    }
-  };
-
   const resetForm = () => {
-    setFormData({ title: '', content: '', priority: 'normal', targetRoles: [], expiresAt: '' });
+    setFormData(defaultForm);
     setEditingAnnouncement(null);
   };
 
@@ -269,6 +192,8 @@ export default function SystemAnnouncementsPage() {
         return 'outline';
     }
   };
+
+  const submitting = createMutation.isPending || updateMutation.isPending;
 
   return (
     <SuperAdminLayout title="System Announcements">
@@ -330,7 +255,7 @@ export default function SystemAnnouncementsPage() {
                       <Label htmlFor="priority-m">Priority</Label>
                       <Select
                         value={formData.priority}
-                        onValueChange={(value: 'low' | 'normal' | 'high' | 'urgent') => 
+                        onValueChange={(value: AnnouncementPriority) =>
                           setFormData({ ...formData, priority: value })
                         }
                       >
@@ -351,8 +276,8 @@ export default function SystemAnnouncementsPage() {
                       <Input
                         id="expires-m"
                         type="date"
-                        value={formData.expiresAt}
-                        onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
+                        value={formData.expires_at}
+                        onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
                       />
                     </div>
                     <div className="grid gap-2">
@@ -362,14 +287,14 @@ export default function SystemAnnouncementsPage() {
                           <Button
                             key={role.value}
                             type="button"
-                            variant={formData.targetRoles.includes(role.value) ? 'default' : 'outline'}
+                            variant={formData.target_roles.includes(role.value) ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => {
                               setFormData({
                                 ...formData,
-                                targetRoles: formData.targetRoles.includes(role.value)
-                                  ? formData.targetRoles.filter((r) => r !== role.value)
-                                  : [...formData.targetRoles, role.value],
+                                target_roles: formData.target_roles.includes(role.value)
+                                  ? formData.target_roles.filter((r) => r !== role.value)
+                                  : [...formData.target_roles, role.value],
                               });
                             }}
                           >
@@ -436,7 +361,7 @@ export default function SystemAnnouncementsPage() {
                         <Label htmlFor="priority">Priority</Label>
                         <Select
                           value={formData.priority}
-                          onValueChange={(value: 'low' | 'normal' | 'high' | 'urgent') => 
+                          onValueChange={(value: AnnouncementPriority) =>
                             setFormData({ ...formData, priority: value })
                           }
                         >
@@ -457,8 +382,8 @@ export default function SystemAnnouncementsPage() {
                         <Input
                           id="expires"
                           type="date"
-                          value={formData.expiresAt}
-                          onChange={(e) => setFormData({ ...formData, expiresAt: e.target.value })}
+                          value={formData.expires_at}
+                          onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
                         />
                       </div>
                     </div>
@@ -469,14 +394,14 @@ export default function SystemAnnouncementsPage() {
                           <Button
                             key={role.value}
                             type="button"
-                            variant={formData.targetRoles.includes(role.value) ? 'default' : 'outline'}
+                            variant={formData.target_roles.includes(role.value) ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => {
                               setFormData({
                                 ...formData,
-                                targetRoles: formData.targetRoles.includes(role.value)
-                                  ? formData.targetRoles.filter((r) => r !== role.value)
-                                  : [...formData.targetRoles, role.value],
+                                target_roles: formData.target_roles.includes(role.value)
+                                  ? formData.target_roles.filter((r) => r !== role.value)
+                                  : [...formData.target_roles, role.value],
                               });
                             }}
                           >
@@ -509,7 +434,7 @@ export default function SystemAnnouncementsPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loading ? (
+            {isLoading ? (
               <div className="text-center py-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
               </div>
@@ -555,7 +480,7 @@ export default function SystemAnnouncementsPage() {
                       <div className="flex items-center gap-2">
                         <Switch
                           checked={announcement.is_active}
-                          onCheckedChange={() => toggleActive(announcement.id, announcement.is_active)}
+                          onCheckedChange={() => toggleMutation.mutate({ id: announcement.id, isActive: !announcement.is_active })}
                         />
                         <span className={`text-xs ${announcement.is_active ? 'text-success' : 'text-muted-foreground'}`}>
                           {announcement.is_active ? 'Active' : 'Off'}
@@ -605,7 +530,10 @@ export default function SystemAnnouncementsPage() {
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
-                            <Switch checked={announcement.is_active} onCheckedChange={() => toggleActive(announcement.id, announcement.is_active)} />
+                            <Switch
+                              checked={announcement.is_active}
+                              onCheckedChange={() => toggleMutation.mutate({ id: announcement.id, isActive: !announcement.is_active })}
+                            />
                             <span className={announcement.is_active ? 'text-success' : 'text-muted-foreground'}>
                               {announcement.is_active ? 'Active' : 'Inactive'}
                             </span>
