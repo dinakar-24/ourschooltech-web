@@ -27,6 +27,8 @@ import {
   LogOut,
   Menu,
   X,
+  PanelLeftClose,
+  PanelLeftOpen,
   Video,
   Bus,
   Image,
@@ -423,13 +425,15 @@ export function AdminLayout() {
             </div>
           </div>
         )}
-        <Button 
-          variant="ghost" 
-          size="icon-sm" 
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="text-sidebar-foreground hover:bg-sidebar-accent hidden md:flex"
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="text-sidebar-foreground bg-sidebar-accent/40 hover:bg-sidebar-accent border border-sidebar-border/60 hidden md:flex shrink-0"
         >
-          {isCollapsed ? <Menu className="w-4 h-4" /> : <X className="w-4 h-4" />}
+          {isCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
         </Button>
       </div>
 
