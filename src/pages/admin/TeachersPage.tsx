@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -96,7 +95,6 @@ export default function TeachersPage() {
   };
 
   return (
-    <AdminLayout title="Teachers">
       <div className="space-y-6 animate-fade-up">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -376,6 +374,5 @@ export default function TeachersPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </AdminLayout>
   );
 }

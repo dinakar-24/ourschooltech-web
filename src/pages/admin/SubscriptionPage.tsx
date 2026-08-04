@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -395,7 +394,6 @@ export default function SubscriptionPage() {
 
   if (subLoading) {
     return (
-      <AdminLayout title="Subscription">
         <div className="max-w-2xl mx-auto space-y-4">
           <Skeleton className="h-44 w-full rounded-xl" />
           <div className="grid grid-cols-3 gap-3">
@@ -405,13 +403,11 @@ export default function SubscriptionPage() {
           </div>
           <Skeleton className="h-32 w-full rounded-lg" />
         </div>
-      </AdminLayout>
     );
   }
 
   if (!subscription) {
     return (
-      <AdminLayout title="Subscription">
         <div className="max-w-2xl mx-auto">
           <Card>
             <CardContent className="p-8 text-center">
@@ -423,7 +419,6 @@ export default function SubscriptionPage() {
             </CardContent>
           </Card>
         </div>
-      </AdminLayout>
     );
   }
 
@@ -438,7 +433,6 @@ export default function SubscriptionPage() {
   const StatusIcon = statusConfig.icon;
 
   return (
-    <AdminLayout title="Subscription">
       <div className="max-w-lg mx-auto space-y-5 pb-10">
 
         {/* Upgrade Alert Banner */}
@@ -789,6 +783,5 @@ export default function SubscriptionPage() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
   );
 }

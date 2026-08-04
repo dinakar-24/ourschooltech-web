@@ -13,6 +13,7 @@ import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 import { ProtectedRoute, getRoleDashboard } from "@/components/auth/ProtectedRoute";
 import { SubscriptionGuard } from "@/components/admin/SubscriptionGuard";
 import { AdminPermissionGuard } from "@/components/admin/AdminPermissionGuard";
+import { AdminLayout } from "@/components/layout/AdminLayout";
 import { usePrefetchRoutes } from "@/hooks/usePrefetchRoutes";
 import { DynamicManifestHandler } from "@/components/pwa/DynamicManifestHandler";
 import { InstallAppBanner } from "@/components/pwa/InstallAppBanner";
@@ -301,35 +302,41 @@ function AppRoutes() {
             </>
           )}
           
-          {/* School Admin Routes */}
-          <Route path="/admin/dashboard" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminDashboard /></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/students" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><StudentsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/teachers" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><TeachersPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/classes" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><ClassesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/attendance" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><AttendancePage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/holiday-calendar" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><HolidayCalendarPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/employee-attendance" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><EmployeeAttendancePage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/fees" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><FeesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/fees/:studentId" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><StudentFeesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/exams" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><ExamsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/academic-years" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><AcademicYearsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/timetable" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><TimetablePage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/announcements" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><AnnouncementsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/reports" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><ReportsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><SettingsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/profile" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminProfilePage /></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/subscription" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><AdminPermissionGuard><SubscriptionPage /></AdminPermissionGuard></ProtectedRoute>} />
-          <Route path="/admin/bulk-upload" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><BulkUploadPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/online-classes" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><OnlineClassesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/transport" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><TransportPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          
-          <Route path="/admin/gallery" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><GalleryPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/feedback" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><FeedbackPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/queries" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><QueryPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/students/bulk-upload" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><BulkUploadPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/notifications" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminNotificationsPage /></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/install-app" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><InstallAppPage /></SubscriptionGuard></ProtectedRoute>} />
-          <Route path="/admin/*" element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminDashboard /></SubscriptionGuard></ProtectedRoute>} />
+          {/* School Admin Routes -- one persistent AdminLayout wraps all of
+              these via Outlet (sidebar/topbar never remounts on nav between
+              them); each child keeps its exact pre-existing guard chain
+              unchanged (e.g. Subscription deliberately skips SubscriptionGuard
+              so an unpaid school can still reach it to pay) -- only the
+              layout nests here, not the guards. */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route path="dashboard" handle={{ title: 'Dashboard' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminDashboard /></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="students" handle={{ title: 'Students' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><StudentsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="teachers" handle={{ title: 'Teachers' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><TeachersPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="classes" handle={{ title: 'Classes & Sections' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><ClassesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="attendance" handle={{ title: 'Attendance' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><AttendancePage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="holiday-calendar" handle={{ title: 'Holiday Calendar' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><HolidayCalendarPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="employee-attendance" handle={{ title: 'Employee Attendance' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><EmployeeAttendancePage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="fees" handle={{ title: 'Fees Management' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><FeesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="fees/:studentId" handle={{ title: 'Student Fee Details' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><StudentFeesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="exams" handle={{ title: 'Examinations' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><ExamsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="academic-years" handle={{ title: 'Academic Years' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><AcademicYearsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="timetable" handle={{ title: 'Timetable' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><TimetablePage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="announcements" handle={{ title: 'Announcements' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><AnnouncementsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="reports" handle={{ title: 'Reports' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><ReportsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="settings" handle={{ title: 'Settings' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><SettingsPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="profile" handle={{ title: 'Profile' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminProfilePage /></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="subscription" handle={{ title: 'Subscription' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><AdminPermissionGuard><SubscriptionPage /></AdminPermissionGuard></ProtectedRoute>} />
+            <Route path="bulk-upload" handle={{ title: 'Bulk Upload' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><BulkUploadPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="online-classes" handle={{ title: 'Online Classes' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><OnlineClassesPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="transport" handle={{ title: 'Transport' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><TransportPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="gallery" handle={{ title: 'Gallery' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><GalleryPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="feedback" handle={{ title: 'Feedback' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><FeedbackPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="queries" handle={{ title: 'Support Queries' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><QueryPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="students/bulk-upload" handle={{ title: 'Bulk Upload' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminPermissionGuard><BulkUploadPage /></AdminPermissionGuard></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="notifications" handle={{ title: 'Notifications' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminNotificationsPage /></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="install-app" handle={{ title: 'Install App' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><InstallAppPage /></SubscriptionGuard></ProtectedRoute>} />
+            <Route path="*" handle={{ title: 'Dashboard' }} element={<ProtectedRoute allowedRoles={['school_admin', 'super_admin']} requireImpersonation><SubscriptionGuard><AdminDashboard /></SubscriptionGuard></ProtectedRoute>} />
+          </Route>
           
           {/* Teacher Routes */}
           <Route path="/teacher/dashboard" element={<ProtectedRoute allowedRoles={['teacher']}><TeacherDashboard /></ProtectedRoute>} />

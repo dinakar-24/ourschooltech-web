@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -111,7 +110,6 @@ export default function SettingsPage() {
   ];
 
   return (
-    <AdminLayout title="Settings">
       <div className="space-y-5 animate-fade-up">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
           {/* Mobile: Select dropdown */}
@@ -234,6 +232,5 @@ export default function SettingsPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </AdminLayout>
   );
 }

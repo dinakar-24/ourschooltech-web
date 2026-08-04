@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -256,7 +255,7 @@ export default function OnlineClassesPage() {
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-4 md:space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -440,6 +439,6 @@ export default function OnlineClassesPage() {
           </DialogContent>
         </Dialog>
       )}
-    </AdminLayout>
+    </>
   );
 }

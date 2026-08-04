@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -52,7 +51,6 @@ export default function TimetablePage() {
   }, [entries]);
 
   return (
-    <AdminLayout title="Timetable">
       <div className="space-y-5 animate-fade-up pb-6">
         {/* Filters */}
         <div className="flex flex-col sm:flex-row gap-3">
@@ -150,6 +148,5 @@ export default function TimetablePage() {
           </Tabs>
         )}
       </div>
-    </AdminLayout>
   );
 }

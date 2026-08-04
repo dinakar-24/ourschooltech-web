@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -60,7 +59,7 @@ export default function FeedbackPage() {
     : '0';
 
   return (
-    <AdminLayout title="Feedback">
+    <>
       <div className="space-y-4 animate-fade-up">
         {/* Stats */}
         <div className="grid grid-cols-2 gap-2.5">
@@ -179,7 +178,7 @@ export default function FeedbackPage() {
           </DialogContent>
         </Dialog>
       )}
-    </AdminLayout>
+    </>
   );
 }
 

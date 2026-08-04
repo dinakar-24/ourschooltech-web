@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { useStudentFeeInvoices } from '@/hooks/useStudentFeeInvoices';
 import { FeeInvoice, FeePayment } from '@/hooks/useFeeInvoices';
 import { Card, CardContent } from '@/components/ui/card';
@@ -125,7 +124,6 @@ export default function StudentFeesPage() {
   };
 
   return (
-    <AdminLayout title="Student Fee Details">
       <div className="space-y-4 md:space-y-6 animate-fade-up">
         {/* Back button */}
         <Button variant="ghost" size="sm" onClick={() => navigate('/admin/fees')} className="gap-1.5">
@@ -320,6 +318,5 @@ export default function StudentFeesPage() {
         <PaymentReceiptDialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen} payment={receiptPayment} invoice={receiptInvoice} />
         <ApplyDiscountDialog open={discountDialogOpen} onOpenChange={setDiscountDialogOpen} invoice={discountInvoice} />
       </div>
-    </AdminLayout>
   );
 }

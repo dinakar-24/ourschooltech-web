@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import type { FeeEntry } from '@/components/admin/AddStudentDialog';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -283,7 +282,6 @@ export default function StudentsPage() {
   };
 
   return (
-    <AdminLayout title="Students">
       <div className="space-y-6 animate-fade-up">
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -575,6 +573,5 @@ export default function StudentsPage() {
           studentName={credentialsStudentName}
         />
       </div>
-    </AdminLayout>
   );
 }

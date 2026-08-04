@@ -1,4 +1,3 @@
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { AdminQuickActions } from '@/components/admin/AdminQuickActions';
 import { AdminStatCard } from '@/components/admin/AdminStatCard';
 import { TodaysSummary } from '@/components/admin/TodaysSummary';
@@ -78,7 +77,6 @@ export default function AdminDashboard() {
   const displayGreeting = getGreeting();
 
   return (
-    <AdminLayout title="Dashboard">
       <div 
         ref={scrollRef}
         onTouchStart={handleTouchStart}
@@ -175,6 +173,5 @@ export default function AdminDashboard() {
         <PendingTasks />
         <TodaysSummary />
       </div>
-    </AdminLayout>
   );
 }

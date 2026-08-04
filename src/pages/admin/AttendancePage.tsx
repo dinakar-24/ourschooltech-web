@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,7 +47,6 @@ export default function AttendancePage() {
     : '0.0';
 
   return (
-    <AdminLayout title="Attendance">
       <div className="space-y-6 animate-fade-up">
         {/* Date Picker & Actions */}
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 justify-between">
@@ -271,6 +269,5 @@ export default function AttendancePage() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
   );
 }

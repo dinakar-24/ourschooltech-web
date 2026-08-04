@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -298,7 +297,7 @@ export default function AnnouncementsPage() {
   );
 
   return (
-    <AdminLayout title="Announcements">
+    <>
       <div className="space-y-6 animate-fade-up">
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -515,6 +514,6 @@ export default function AnnouncementsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AdminLayout>
+    </>
   );
 }

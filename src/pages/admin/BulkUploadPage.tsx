@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
 import * as XLSX from '@e965/xlsx';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -226,7 +225,6 @@ export default function BulkUploadPage() {
   );
 
   return (
-    <AdminLayout title="Bulk Upload">
       <div className="space-y-4 animate-fade-up">
         {/* Step: Select File */}
         {step === 'select' && (
@@ -582,6 +580,5 @@ export default function BulkUploadPage() {
           </>
         )}
       </div>
-    </AdminLayout>
   );
 }

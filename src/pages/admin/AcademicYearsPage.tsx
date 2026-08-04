@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,7 +103,6 @@ export default function AcademicYearsPage() {
   };
 
   return (
-    <AdminLayout title="Academic Years">
       <div className="space-y-6 animate-fade-up">
         {/* Current Academic Year Banner */}
         {currentYear && (
@@ -373,6 +371,5 @@ export default function AcademicYearsPage() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
   );
 }

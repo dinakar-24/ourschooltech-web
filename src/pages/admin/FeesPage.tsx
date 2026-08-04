@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { useClasses } from '@/hooks/useClasses';
 import { useSections } from '@/hooks/useSections';
 import { Progress } from '@/components/ui/progress';
@@ -175,7 +174,6 @@ export default function FeesPage() {
   };
 
   return (
-    <AdminLayout title="Fees Management">
       <div className="space-y-6 animate-fade-up">
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -459,6 +457,5 @@ export default function FeesPage() {
         <SendReminderDialog open={reminderDialogOpen} onOpenChange={setReminderDialogOpen} />
         <ImportFeesDialog open={importDialogOpen} onOpenChange={setImportDialogOpen} />
       </div>
-    </AdminLayout>
   );
 }

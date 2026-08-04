@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,7 +82,6 @@ export default function EmployeeAttendancePage() {
   ];
 
   return (
-    <AdminLayout title="Employee Attendance">
       <div className="space-y-4 md:space-y-5 animate-fade-up">
         {/* Controls - stacked on mobile */}
         <div className="space-y-2.5 md:space-y-0 md:flex md:flex-row md:gap-3 md:justify-between md:items-center">
@@ -225,6 +223,5 @@ export default function EmployeeAttendancePage() {
           </div>
         )}
       </div>
-    </AdminLayout>
   );
 }

@@ -1,5 +1,4 @@
 import { useState, useMemo } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -104,7 +103,6 @@ export default function HolidayCalendarPage() {
   const selectedDayEvents = selectedDay ? (holidaysByDate[selectedDay] || []) : [];
 
   return (
-    <AdminLayout title="Holiday Calendar">
       <div className="flex flex-col lg:flex-row gap-4 lg:gap-5 animate-fade-up">
         {/* Sidebar — hidden on mobile, shown on desktop */}
         <div className="hidden lg:block w-72 space-y-4 shrink-0">
@@ -386,6 +384,5 @@ export default function HolidayCalendarPage() {
           </div>
         )}
       </div>
-    </AdminLayout>
   );
 }

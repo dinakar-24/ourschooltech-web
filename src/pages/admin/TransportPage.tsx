@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -256,7 +255,7 @@ const [assignForm, setAssignForm] = useState({ student_id: '', pickup_stop: '', 
   const isSubmitting = createRoute.isPending || updateRoute.isPending;
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-4 md:space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
@@ -478,6 +477,6 @@ const [assignForm, setAssignForm] = useState({ student_id: '', pickup_stop: '', 
           </DialogContent>
         </Dialog>
       )}
-    </AdminLayout>
+    </>
   );
 }

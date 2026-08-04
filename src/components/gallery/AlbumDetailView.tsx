@@ -50,9 +50,12 @@ export function AlbumDetailView({ album, onBack }: AlbumDetailViewProps) {
   return (
     <div className="space-y-4 animate-fade-up">
       <div className="flex items-center justify-between gap-2">
-        <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0">
-          <ArrowLeft className="w-4 h-4 mr-1.5" /> Back
-        </Button>
+        <div className="flex items-center gap-3 min-w-0">
+          <Button variant="ghost" size="sm" onClick={onBack} className="shrink-0">
+            <ArrowLeft className="w-4 h-4 mr-1.5" /> Back
+          </Button>
+          <h2 className="text-sm font-semibold text-foreground truncate">{album.title}</h2>
+        </div>
         <div className="flex gap-2">
           <input
             ref={fileInputRef}

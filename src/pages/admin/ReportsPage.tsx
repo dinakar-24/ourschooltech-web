@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -87,7 +86,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <AdminLayout title="Reports">
+    <>
       <div className="space-y-6 animate-fade-up">
         {/* Quick Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -218,6 +217,6 @@ export default function ReportsPage() {
         onOpenChange={setCustomDialogOpen}
         onGenerate={generators.generateCustomReport}
       />
-    </AdminLayout>
+    </>
   );
 }

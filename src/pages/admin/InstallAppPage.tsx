@@ -1,4 +1,3 @@
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { useTenant } from '@/contexts/TenantContext';
@@ -63,7 +62,6 @@ export default function InstallAppPage() {
   const schoolLogo = displaySchool?.logo || tenant?.logo;
 
   return (
-    <AdminLayout title="Install App">
       <div className="max-w-lg mx-auto space-y-6 pb-8">
         <div className="text-center space-y-3 pt-2">
           {schoolLogo && (
@@ -126,6 +124,5 @@ export default function InstallAppPage() {
           </Button>
         </div>
       </div>
-    </AdminLayout>
   );
 }

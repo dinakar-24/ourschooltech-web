@@ -1,5 +1,5 @@
-import { ReactNode, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, Outlet, useLocation, useMatches, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
@@ -41,11 +41,6 @@ import {
   Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
-
-interface AdminLayoutProps {
-  children: ReactNode;
-  title?: string;
-}
 
 interface MenuItem {
   label: string;
@@ -271,7 +266,12 @@ function NotificationDropdown() {
   );
 }
 
-export function AdminLayout({ children, title }: AdminLayoutProps) {
+// 250ms is the standard hover-intent debounce for auto-expanding nav rails --
+// long enough that briefly crossing the sidebar on the way elsewhere doesn't
+// trigger it, short enough that a deliberate mouse-leave feels immediate.
+const HOVER_COLLAPSE_DELAY_MS = 250;
+
+export function AdminLayout() {
   const { user, school, logout } = useAuth();
   const { impersonatedSchool, isImpersonating } = useImpersonation();
   const { t } = useTranslation();
@@ -280,7 +280,42 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
   const displaySchoolLogo = isImpersonating ? impersonatedSchool?.logo : school?.logo;
   const navigate = useNavigate();
   const location = useLocation();
+  const matches = useMatches();
+  const title = matches
+    .map(m => (m.handle as { title?: string } | undefined)?.title)
+    .filter(Boolean)
+    .at(-1);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  // Hover-expand: previews the full sidebar over a manually-collapsed one
+  // without touching the persistent isCollapsed preference. effectiveCollapsed
+  // (derived below, after expandedItems) is what the render actually uses.
+  const [isHoverExpanded, setIsHoverExpanded] = useState(false);
+  const collapseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (collapseTimeoutRef.current) clearTimeout(collapseTimeoutRef.current);
+    };
+  }, []);
+
+  const handleSidebarMouseEnter = () => {
+    if (!isCollapsed) return;
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+    setIsHoverExpanded(true);
+  };
+
+  const handleSidebarMouseLeave = () => {
+    if (!isCollapsed) return;
+    collapseTimeoutRef.current = setTimeout(() => {
+      setIsHoverExpanded(false);
+      collapseTimeoutRef.current = null;
+    }, HOVER_COLLAPSE_DELAY_MS);
+  };
+
+  const effectiveCollapsed = isCollapsed && !isHoverExpanded;
   // Auto-expand menu items based on current route
   const getInitialExpanded = () => {
     const expanded: string[] = [];
@@ -319,7 +354,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
     <>
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border flex items-center justify-between">
-        {!isCollapsed && (
+        {!effectiveCollapsed && (
           <div className="flex items-center gap-3">
             {displaySchoolLogo ? (
               <img src={displaySchoolLogo} alt={displaySchoolName || 'School'} className="w-9 h-9 object-contain" />
@@ -355,12 +390,12 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
             if (visibleItems.length === 0) return null;
             return (
               <div key={section.group || 'top'}>
-                {section.group && !isCollapsed && (
+                {section.group && !effectiveCollapsed && (
                   <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-sidebar-foreground/40">
                     {section.group}
                   </p>
                 )}
-                {section.group && isCollapsed && (
+                {section.group && effectiveCollapsed && (
                   <div className="mx-auto my-1.5 w-6 border-t border-sidebar-border/50" />
                 )}
                 <ul className="space-y-0.5">
@@ -377,15 +412,15 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
                           >
                             <div className="flex items-center gap-3">
                               <item.icon className="w-5 h-5 shrink-0" />
-                              {!isCollapsed && <span>{t(labelToKey[item.label] || item.label)}</span>}
+                              {!effectiveCollapsed && <span>{t(labelToKey[item.label] || item.label)}</span>}
                             </div>
-                            {!isCollapsed && (
-                              expandedItems.includes(item.label) 
+                            {!effectiveCollapsed && (
+                              expandedItems.includes(item.label)
                                 ? <ChevronDown className="w-4 h-4" />
                                 : <ChevronRight className="w-4 h-4" />
                             )}
                           </button>
-                          {!isCollapsed && expandedItems.includes(item.label) && (
+                          {!effectiveCollapsed && expandedItems.includes(item.label) && (
                             <ul className="mt-1 ml-8 space-y-1">
                               {item.children.map((child) => (
                                 <li key={child.href}>
@@ -414,10 +449,10 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
                             "nav-item",
                             isActive(item.href) && "nav-item-active"
                           )}
-                          title={isCollapsed ? t(labelToKey[item.label] || item.label) : undefined}
+                          title={effectiveCollapsed ? t(labelToKey[item.label] || item.label) : undefined}
                         >
                           <item.icon className="w-5 h-5 shrink-0" />
-                          {!isCollapsed && <span>{t(labelToKey[item.label] || item.label)}</span>}
+                          {!effectiveCollapsed && <span>{t(labelToKey[item.label] || item.label)}</span>}
                         </Link>
                       )}
                     </li>
@@ -433,7 +468,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
       <div className="p-3 border-t border-sidebar-border">
         <div className={cn(
           "flex items-center gap-3 cursor-pointer",
-          isCollapsed && "justify-center"
+          effectiveCollapsed && "justify-center"
         )}
         onClick={() => { navigate('/admin/profile'); setMobileMenuOpen(false); }}
         >
@@ -444,7 +479,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
               {user?.name.split(' ').map(n => n[0]).join('')}
             </div>
           )}
-          {!isCollapsed && (
+          {!effectiveCollapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-sidebar-accent-foreground truncate">{user?.name}</p>
               <button 
@@ -464,10 +499,12 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
   return (
     <div className="min-h-screen flex w-full bg-background">
       {/* Sidebar - Desktop */}
-      <aside 
+      <aside
+        onMouseEnter={handleSidebarMouseEnter}
+        onMouseLeave={handleSidebarMouseLeave}
         className={cn(
           "hidden md:flex flex-col bg-sidebar text-sidebar-foreground h-screen sticky top-0 transition-all duration-300 z-40",
-          isCollapsed ? "w-16" : "w-64"
+          effectiveCollapsed ? "w-16" : "w-64"
         )}
       >
         <SidebarContent />
@@ -529,7 +566,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
         </header>
         
         <main className="flex-1 p-4 md:p-6 overflow-auto">
-          {children}
+          <Outlet />
         </main>
       </div>
     </div>

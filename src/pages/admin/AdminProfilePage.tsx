@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -172,7 +171,6 @@ export default function AdminProfilePage() {
   const displayName = profileData?.full_name || user?.name || 'Admin';
 
   return (
-    <AdminLayout title="Profile">
       <div className="max-w-2xl mx-auto space-y-4 pb-8">
 
         {/* Profile Hero */}
@@ -389,7 +387,6 @@ export default function AdminProfilePage() {
           Sign Out
         </Button>
       </div>
-    </AdminLayout>
   );
 }
 

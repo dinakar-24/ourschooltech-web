@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { AdminLayout } from '@/components/layout/AdminLayout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,14 +50,12 @@ export default function GalleryPage() {
 
   if (selectedAlbum) {
     return (
-      <AdminLayout title={selectedAlbum.title}>
         <AlbumDetailView album={selectedAlbum} onBack={() => setSelectedAlbum(null)} />
-      </AdminLayout>
     );
   }
 
   return (
-    <AdminLayout title="Gallery">
+    <>
       <div className="space-y-5 animate-fade-up">
         {/* Header */}
         <div className="flex justify-between items-center gap-3">
@@ -183,6 +180,6 @@ export default function GalleryPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AdminLayout>
+    </>
   );
 }
