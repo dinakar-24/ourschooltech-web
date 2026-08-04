@@ -395,7 +395,16 @@ export function AdminLayout() {
     navigate('/login');
   };
 
-  const SidebarContent = ({ withNavRef }: { withNavRef?: boolean } = {}) => (
+  // A plain function CALLED inline ({renderSidebarContent()}), not a
+  // component invoked via JSX (<SidebarContent/>). Redefining this on every
+  // render is fine as long as it's only ever called directly -- React's
+  // reconciliation never sees "SidebarContent" as a type, only the div/nav
+  // elements it returns. Used to be invoked as <SidebarContent/>, which made
+  // React treat the new function identity on each render as a genuinely
+  // different component and remount the whole subtree (including the nav's
+  // scroll position) on every navigation -- invisible before AdminLayout was
+  // remounting anyway on every route change, active now that it's not.
+  const renderSidebarContent = (withNavRef?: boolean) => (
     <>
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border flex items-center justify-between">
@@ -552,7 +561,7 @@ export function AdminLayout() {
           effectiveCollapsed ? "w-16" : "w-64"
         )}
       >
-        <SidebarContent withNavRef />
+        {renderSidebarContent(true)}
       </aside>
 
       {/* Mobile Menu Overlay */}
@@ -576,7 +585,7 @@ export function AdminLayout() {
                 <X className="w-5 h-5" />
               </Button>
             </div>
-            <SidebarContent />
+            {renderSidebarContent()}
           </div>
         </div>
       )}
