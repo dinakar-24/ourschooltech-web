@@ -11,7 +11,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Clock, Eye, Pencil, ImageIcon, LayoutGrid } from 'lucide-react';
 import { useClasses } from '@/hooks/useClasses';
-import { useSections } from '@/hooks/useSections';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useTimetableEntries } from '@/hooks/useTimetableEntries';
 import { TimetableGrid } from '@/components/timetable/TimetableGrid';
@@ -24,23 +23,28 @@ export default function TimetablePage() {
   const schoolId = useEffectiveSchoolId();
 
   const [selectedClass, setSelectedClass] = useState('');
-  const [selectedSection, setSelectedSection] = useState('');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [maxPeriod, setMaxPeriod] = useState(8);
 
   const classNames = classes?.map(c => c.name) || [];
   const selectedClassData = classes?.find(c => c.name === selectedClass);
-  const { data: dynamicSections } = useSections(selectedClass);
-  const classSections = selectedClassData?.sections.map(s => s.name) || [];
-  const sections = classSections.length > 0 ? classSections : (dynamicSections || ['A']);
+  // Real Section rows only -- the grid needs a real sectionId FK, unlike the
+  // free-text-name fallback useSections() offers for other pages.
+  const sections = selectedClassData?.sections || [];
+  const selectedSectionData = sections.find(s => s.id === selectedSectionId);
+  const selectedSection = selectedSectionData?.name || '';
 
   useEffect(() => {
-    if (sections.length > 0 && !sections.includes(selectedSection)) {
-      setSelectedSection(sections[0]);
+    if (sections.length > 0 && !sections.some(s => s.id === selectedSectionId)) {
+      setSelectedSectionId(sections[0].id);
+    } else if (sections.length === 0 && selectedSectionId) {
+      setSelectedSectionId('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClass, sections]);
 
-  const { data: entries, isLoading: entriesLoading } = useTimetableEntries(selectedClass, selectedSection);
+  const { data: entries, isLoading: entriesLoading } = useTimetableEntries(selectedSectionId || undefined);
 
   // Sync maxPeriod with data
   useEffect(() => {
@@ -64,13 +68,13 @@ export default function TimetablePage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={selectedSection} onValueChange={setSelectedSection}>
+          <Select value={selectedSectionId} onValueChange={setSelectedSectionId} disabled={sections.length === 0}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Section" />
             </SelectTrigger>
             <SelectContent>
               {sections.map(s => (
-                <SelectItem key={s} value={s}>Section {s}</SelectItem>
+                <SelectItem key={s.id} value={s.id}>Section {s.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -82,6 +86,14 @@ export default function TimetablePage() {
             <h3 className="text-lg font-semibold mb-2">Select a Class</h3>
             <p className="text-muted-foreground text-sm">
               Choose a class and section above to view or manage the timetable.
+            </p>
+          </Card>
+        ) : sections.length === 0 ? (
+          <Card className="p-12 text-center">
+            <Clock className="w-12 h-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+            <h3 className="text-lg font-semibold mb-2">No Sections Found</h3>
+            <p className="text-muted-foreground text-sm">
+              {selectedClass} has no sections yet. Add one from the Classes page first.
             </p>
           </Card>
         ) : (
@@ -116,8 +128,8 @@ export default function TimetablePage() {
               ) : editMode ? (
                 <TimetableEditor
                   entries={entries || []}
-                  className={selectedClass}
-                  section={selectedSection}
+                  classId={selectedClassData!.id}
+                  sectionId={selectedSectionId}
                   maxPeriod={maxPeriod}
                   onMaxPeriodChange={setMaxPeriod}
                 />

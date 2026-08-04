@@ -12,13 +12,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAllTeachersList } from '@/hooks/useTeachers';
+import { useSubjects } from '@/hooks/useClasses';
 import { Loader2 } from 'lucide-react';
 
 interface PeriodEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (data: {
-    subject: string;
+    subject_id: string | null;
     teacher_id: string | null;
     start_time: string;
     end_time: string;
@@ -27,7 +28,7 @@ interface PeriodEditDialogProps {
   }) => void;
   isSaving?: boolean;
   initialData?: {
-    subject?: string;
+    subject_id?: string | null;
     teacher_id?: string | null;
     start_time?: string;
     end_time?: string;
@@ -35,6 +36,7 @@ interface PeriodEditDialogProps {
   };
   periodNumber: number;
   dayOfWeek: string;
+  classId: string;
 }
 
 export function PeriodEditDialog({
@@ -45,9 +47,11 @@ export function PeriodEditDialog({
   initialData,
   periodNumber,
   dayOfWeek,
+  classId,
 }: PeriodEditDialogProps) {
   const { data: teachers } = useAllTeachersList();
-  const [subject, setSubject] = useState('');
+  const { data: subjects } = useSubjects(classId);
+  const [subjectId, setSubjectId] = useState<string>('none');
   const [teacherId, setTeacherId] = useState<string>('none');
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('08:30');
@@ -56,7 +60,7 @@ export function PeriodEditDialog({
 
   useEffect(() => {
     if (open) {
-      setSubject(initialData?.subject || '');
+      setSubjectId(initialData?.subject_id || 'none');
       setTeacherId(initialData?.teacher_id || 'none');
       setStartTime(initialData?.start_time || '08:00');
       setEndTime(initialData?.end_time || '08:30');
@@ -67,7 +71,7 @@ export function PeriodEditDialog({
 
   const handleSave = () => {
     onSave({
-      subject: isLunch ? 'LUNCH' : subject,
+      subject_id: isLunch ? null : (subjectId === 'none' ? null : subjectId),
       teacher_id: isLunch ? null : (teacherId === 'none' ? null : teacherId),
       start_time: startTime,
       end_time: endTime,
@@ -76,15 +80,12 @@ export function PeriodEditDialog({
     });
   };
 
-  // Get subjects from selected teacher
-  const selectedTeacher = teachers?.find(t => t.id === teacherId);
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {initialData?.subject ? 'Edit' : 'Add'} Period {periodNumber} — {dayOfWeek}
+            {initialData ? 'Edit' : 'Add'} Period {periodNumber} — {dayOfWeek}
           </DialogTitle>
         </DialogHeader>
 
@@ -134,11 +135,22 @@ export function PeriodEditDialog({
               {/* Subject */}
               <div className="space-y-1.5">
                 <Label className="text-xs">Subject</Label>
-                <Input
-                  value={subject}
-                  onChange={e => setSubject(e.target.value)}
-                  placeholder="e.g. Mathematics"
-                />
+                <Select value={subjectId} onValueChange={setSubjectId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select Subject" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Subject</SelectItem>
+                    {subjects?.map(s => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {subjects?.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No subjects set up for this class yet — add one from the Classes page first.
+                  </p>
+                )}
               </div>
             </>
           )}
@@ -158,7 +170,7 @@ export function PeriodEditDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={handleSave} disabled={isSaving || (!isLunch && !subject.trim())}>
+          <Button onClick={handleSave} disabled={isSaving || (!isLunch && subjectId === 'none')}>
             {isSaving && <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />}
             Save
           </Button>

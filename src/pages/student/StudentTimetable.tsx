@@ -7,7 +7,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Download, ZoomIn, X, ImageOff, LayoutGrid, ImageIcon } from 'lucide-react';
 import { useStudentProfile } from '@/hooks/useStudentData';
-import { useTimetableEntries } from '@/hooks/useTimetableEntries';
+import { useMyTimetable } from '@/hooks/useTimetableEntries';
 import { TimetableGrid } from '@/components/timetable/TimetableGrid';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -24,8 +24,8 @@ export default function StudentTimetable() {
   const section = student?.section || 'A';
   const schoolId = student?.school_id || user?.schoolId || '';
 
-  // Grid data
-  const { data: entries, isLoading: entriesLoading } = useTimetableEntries(className, section);
+  // Grid data -- own class, section resolved server-side.
+  const { data: entries, isLoading: entriesLoading } = useMyTimetable();
 
   // Image data
   const { data: timetableImage, isLoading: imageLoading } = useQuery({

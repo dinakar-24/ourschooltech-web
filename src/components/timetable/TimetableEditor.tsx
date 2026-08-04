@@ -7,13 +7,13 @@ import { Plus, X, Coffee, PlusCircle } from 'lucide-react';
 
 interface TimetableEditorProps {
   entries: TimetableEntry[];
-  className: string;
-  section: string;
+  classId: string;
+  sectionId: string;
   maxPeriod: number;
   onMaxPeriodChange: (n: number) => void;
 }
 
-export function TimetableEditor({ entries, className, section, maxPeriod, onMaxPeriodChange }: TimetableEditorProps) {
+export function TimetableEditor({ entries, classId, sectionId, maxPeriod, onMaxPeriodChange }: TimetableEditorProps) {
   const upsertMutation = useUpsertTimetableEntry();
   const deleteMutation = useDeleteTimetableEntry();
 
@@ -54,7 +54,7 @@ export function TimetableEditor({ entries, className, section, maxPeriod, onMaxP
   };
 
   const handleSave = (data: {
-    subject: string;
+    subject_id: string | null;
     teacher_id: string | null;
     start_time: string;
     end_time: string;
@@ -62,8 +62,7 @@ export function TimetableEditor({ entries, className, section, maxPeriod, onMaxP
     apply_all_days: boolean;
   }) => {
     upsertMutation.mutate({
-      class_name: className,
-      section,
+      section_id: sectionId,
       period_number: editState.period,
       day_of_week: editState.day,
       ...data,
@@ -171,7 +170,7 @@ export function TimetableEditor({ entries, className, section, maxPeriod, onMaxP
         onSave={handleSave}
         isSaving={upsertMutation.isPending}
         initialData={editState.entry ? {
-          subject: editState.entry.subject,
+          subject_id: editState.entry.subject_id,
           teacher_id: editState.entry.teacher_id,
           start_time: editState.entry.start_time,
           end_time: editState.entry.end_time,
@@ -179,6 +178,7 @@ export function TimetableEditor({ entries, className, section, maxPeriod, onMaxP
         } : undefined}
         periodNumber={editState.period}
         dayOfWeek={editState.day}
+        classId={classId}
       />
     </div>
   );

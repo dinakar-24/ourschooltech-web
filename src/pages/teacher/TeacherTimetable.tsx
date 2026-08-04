@@ -17,7 +17,6 @@ import { Clock, Download, ZoomIn, X, ImageOff, LayoutGrid, ImageIcon } from 'luc
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { useClasses } from '@/hooks/useClasses';
-import { useSections } from '@/hooks/useSections';
 import { useTimetableEntries } from '@/hooks/useTimetableEntries';
 import { TimetableGrid } from '@/components/timetable/TimetableGrid';
 import { useQuery } from '@tanstack/react-query';
@@ -31,21 +30,28 @@ export default function TeacherTimetable() {
 
   const classNames = classes?.map(c => c.name) || [];
   const [selectedClass, setSelectedClass] = useState(classNames[0] || '');
-  const [selectedSection, setSelectedSection] = useState('');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
 
+  // Real Section rows only -- the grid needs a real sectionId FK, and reads
+  // are scoped server-side to sections this teacher teaches in or is the
+  // class teacher for (any other section 403s, handled below).
   const selectedClassData = classes?.find(c => c.name === selectedClass);
-  const { data: dynamicSections } = useSections(selectedClass);
-  const classSections = selectedClassData?.sections.map(s => s.name) || [];
-  const sections = classSections.length > 0 ? classSections : (dynamicSections || ['A']);
+  const sections = selectedClassData?.sections || [];
+  const selectedSectionData = sections.find(s => s.id === selectedSectionId);
+  const selectedSection = selectedSectionData?.name || '';
 
   useEffect(() => {
-    if (sections.length > 0 && !sections.includes(selectedSection)) {
-      setSelectedSection(sections[0]);
+    if (sections.length > 0 && !sections.some(s => s.id === selectedSectionId)) {
+      setSelectedSectionId(sections[0].id);
+    } else if (sections.length === 0 && selectedSectionId) {
+      setSelectedSectionId('');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClass, sections]);
 
   // Grid data
-  const { data: entries, isLoading: entriesLoading } = useTimetableEntries(selectedClass, selectedSection);
+  const { data: entries, isLoading: entriesLoading, error: entriesError } = useTimetableEntries(selectedSectionId || undefined);
+  const isForbidden = (entriesError as any)?.response?.status === 403;
 
   // Image data
   const { data: timetableImage, isLoading: imageLoading } = useQuery({
@@ -101,13 +107,13 @@ export default function TeacherTimetable() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={selectedSection} onValueChange={setSelectedSection}>
+          <Select value={selectedSectionId} onValueChange={setSelectedSectionId} disabled={sections.length === 0}>
             <SelectTrigger className="w-[120px]">
               <SelectValue placeholder="Section" />
             </SelectTrigger>
             <SelectContent>
               {sections.map(s => (
-                <SelectItem key={s} value={s}>Section {s}</SelectItem>
+                <SelectItem key={s.id} value={s.id}>Section {s.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -146,6 +152,14 @@ export default function TeacherTimetable() {
             <TabsContent value="schedule" className="mt-3">
               {entriesLoading ? (
                 <Card><CardContent className="p-4"><Skeleton className="w-full h-64 rounded-lg" /></CardContent></Card>
+              ) : isForbidden ? (
+                <Card className="p-10 text-center">
+                  <LayoutGrid className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
+                  <h3 className="text-lg font-semibold mb-2 text-foreground">Not Authorized</h3>
+                  <p className="text-sm text-muted-foreground">
+                    You're not the class teacher for {selectedClass} - Section {selectedSection} and don't teach any periods there.
+                  </p>
+                </Card>
               ) : hasGrid ? (
                 <TimetableGrid entries={entries} compact />
               ) : (

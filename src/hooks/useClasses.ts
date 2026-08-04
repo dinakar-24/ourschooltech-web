@@ -249,3 +249,33 @@ export function useDeleteClass() {
     },
   });
 }
+
+export interface Subject {
+  id: string;
+  name: string;
+  code: string | null;
+  class_id: string;
+}
+
+/** Real subjects for a class -- used by the Timetable grid's Subject picker
+ * (previously free text). No classId filter server-side; filters client-side
+ * against the already-small whole-school list, same as useSections. */
+export function useSubjects(classId?: string) {
+  const schoolId = useEffectiveSchoolId();
+
+  return useQuery({
+    queryKey: ['subjects', schoolId],
+    queryFn: async (): Promise<Subject[]> => {
+      const { data } = await api.get('/school/subjects');
+      return (data.subjects as Array<{ id: string; name: string; code: string | null; classId: string }>).map(s => ({
+        id: s.id,
+        name: s.name,
+        code: s.code,
+        class_id: s.classId,
+      }));
+    },
+    enabled: !!schoolId,
+    staleTime: 5 * 60 * 1000,
+    select: (subjects) => classId ? subjects.filter(s => s.class_id === classId) : subjects,
+  });
+}
