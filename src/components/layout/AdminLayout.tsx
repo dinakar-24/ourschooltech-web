@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, Outlet, useLocation, useMatches, useNavigate } from 'react-router-dom';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
@@ -128,6 +128,40 @@ const labelToKey: Record<string, string> = {
   'All Students': 'sidebar.allStudents', 'Add Student': 'sidebar.addStudent',
   'Holiday Calendar': 'sidebar.holidayCalendar', 'Employees': 'sidebar.employees',
   'My Profile': 'sidebar.myProfile',
+};
+
+// Top-bar page title, keyed by exact pathname. Route `handle` + useMatches()
+// would be the idiomatic react-router way to do this, but useMatches()
+// requires a data router (createBrowserRouter/RouterProvider) -- this app
+// uses the classic <BrowserRouter>/<Routes> setup, where useMatches() throws
+// (confirmed against react-router's own source: it reads a context that's
+// only populated by RouterProvider). A static lookup avoids that entirely.
+const ADMIN_PAGE_TITLES: Record<string, string> = {
+  '/admin/dashboard': 'Dashboard',
+  '/admin/students': 'Students',
+  '/admin/teachers': 'Teachers',
+  '/admin/classes': 'Classes & Sections',
+  '/admin/attendance': 'Attendance',
+  '/admin/holiday-calendar': 'Holiday Calendar',
+  '/admin/employee-attendance': 'Employee Attendance',
+  '/admin/fees': 'Fees Management',
+  '/admin/exams': 'Examinations',
+  '/admin/academic-years': 'Academic Years',
+  '/admin/timetable': 'Timetable',
+  '/admin/announcements': 'Announcements',
+  '/admin/reports': 'Reports',
+  '/admin/settings': 'Settings',
+  '/admin/profile': 'Profile',
+  '/admin/subscription': 'Subscription',
+  '/admin/bulk-upload': 'Bulk Upload',
+  '/admin/online-classes': 'Online Classes',
+  '/admin/transport': 'Transport',
+  '/admin/gallery': 'Gallery',
+  '/admin/feedback': 'Feedback',
+  '/admin/queries': 'Support Queries',
+  '/admin/students/bulk-upload': 'Bulk Upload',
+  '/admin/notifications': 'Notifications',
+  '/admin/install-app': 'Install App',
 };
 
 const notifTypeIcons: Record<string, typeof Bell> = {
@@ -280,11 +314,8 @@ export function AdminLayout() {
   const displaySchoolLogo = isImpersonating ? impersonatedSchool?.logo : school?.logo;
   const navigate = useNavigate();
   const location = useLocation();
-  const matches = useMatches();
-  const title = matches
-    .map(m => (m.handle as { title?: string } | undefined)?.title)
-    .filter(Boolean)
-    .at(-1);
+  const title = ADMIN_PAGE_TITLES[location.pathname]
+    ?? (location.pathname.startsWith('/admin/fees/') ? 'Student Fee Details' : 'Dashboard');
   const [isCollapsed, setIsCollapsed] = useState(false);
   // Hover-expand: previews the full sidebar over a manually-collapsed one
   // without touching the persistent isCollapsed preference. effectiveCollapsed
