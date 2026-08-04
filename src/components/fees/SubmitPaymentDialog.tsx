@@ -39,6 +39,7 @@ export function SubmitPaymentDialog({
 }: Props) {
   const [payableAmount, setPayableAmount] = useState(0);
   const [feeLabels, setFeeLabels] = useState('');
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('phonepe');
   const [transactionId, setTransactionId] = useState('');
   const [notes, setNotes] = useState('');
@@ -58,6 +59,7 @@ export function SubmitPaymentDialog({
 
   const handleAmountChange = useCallback((amt: number) => setPayableAmount(amt), []);
   const handleLabelsChange = useCallback((labels: string) => setFeeLabels(labels), []);
+  const handleItemIdsChange = useCallback((ids: string[]) => setSelectedItemIds(ids), []);
 
   const isValid = payableAmount > 0 && transactionId.trim().length > 0;
 
@@ -96,6 +98,7 @@ export function SubmitPaymentDialog({
       transaction_id: transactionId.trim(),
       screenshot_url: screenshotUrl,
       notes: finalNotes || undefined,
+      fee_invoice_item_ids: selectedItemIds.length > 0 ? selectedItemIds : undefined,
     }, {
       onSuccess: () => onOpenChange(false),
     });
@@ -112,6 +115,7 @@ export function SubmitPaymentDialog({
         maxAmount={maxAmount}
         onAmountChange={handleAmountChange}
         onSelectedLabelsChange={handleLabelsChange}
+        onSelectedItemIdsChange={handleItemIdsChange}
       />
 
       {/* Amount summary */}

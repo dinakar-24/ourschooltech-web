@@ -17,6 +17,11 @@ interface FeeComponentSelectorProps {
   maxAmount: number; // invoice balance
   onAmountChange: (amount: number) => void;
   onSelectedLabelsChange?: (labels: string) => void;
+  // Real FeeInvoiceItem ids for whichever components are currently selected
+  // -- kept alongside the human-readable labels above (not a replacement)
+  // so a submitted payment proof can link to actual line items instead of
+  // only a derived text description.
+  onSelectedItemIdsChange?: (ids: string[]) => void;
 }
 
 export function FeeComponentSelector({
@@ -25,6 +30,7 @@ export function FeeComponentSelector({
   maxAmount,
   onAmountChange,
   onSelectedLabelsChange,
+  onSelectedItemIdsChange,
 }: FeeComponentSelectorProps) {
   const [mode, setMode] = useState<'select' | 'custom'>('select');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -88,6 +94,16 @@ export function FeeComponentSelector({
       onSelectedLabelsChange(labels);
     }
   }, [mode, selectedIds, customComponentId, unpaidComponents, onSelectedLabelsChange]);
+
+  // Emit item ids -- same selection, real FeeInvoiceItem ids instead of labels
+  useEffect(() => {
+    if (!onSelectedItemIdsChange) return;
+    if (mode === 'custom') {
+      onSelectedItemIdsChange(customComponentId ? [customComponentId] : []);
+    } else {
+      onSelectedItemIdsChange(unpaidComponents.filter(c => selectedIds.has(c.id)).map(c => c.id));
+    }
+  }, [mode, selectedIds, customComponentId, unpaidComponents, onSelectedItemIdsChange]);
 
   const toggleComponent = useCallback((id: string) => {
     setSelectedIds(prev => {

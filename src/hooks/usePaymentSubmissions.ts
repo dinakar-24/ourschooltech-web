@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 export interface PaymentSubmission {
@@ -26,28 +25,14 @@ export interface PaymentSubmission {
 
 /** Admin: fetch pending submissions for their school */
 export function usePaymentSubmissions(status?: string) {
-  const { user } = useAuth();
   return useQuery({
     queryKey: ['payment-submissions', status],
     queryFn: async (): Promise<PaymentSubmission[]> => {
-      let q = supabase
-        .from('payment_submissions')
-        .select(`
-          *,
-          student:students(full_name, admission_number, class_name, section),
-          invoice:fee_invoices(total_amount, balance, due_date)
-        `)
-        .order('created_at', { ascending: false });
-
-      if (status && status !== 'all') {
-        q = q.eq('status', status);
-      }
-
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []) as unknown as PaymentSubmission[];
+      const { data } = await api.get('/school/fees/payment-submissions', {
+        params: status ? { status } : undefined,
+      });
+      return data.submissions as PaymentSubmission[];
     },
-    enabled: !!user,
   });
 }
 
@@ -56,13 +41,10 @@ export function useParentPaymentSubmissions(studentId?: string) {
   return useQuery({
     queryKey: ['parent-payment-submissions', studentId],
     queryFn: async (): Promise<PaymentSubmission[]> => {
-      const { data, error } = await supabase
-        .from('payment_submissions')
-        .select('*')
-        .eq('student_id', studentId!)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data || []) as unknown as PaymentSubmission[];
+      const { data } = await api.get('/parent/payment-submissions', {
+        params: { student_id: studentId },
+      });
+      return data.submissions as PaymentSubmission[];
     },
     enabled: !!studentId,
   });
@@ -81,53 +63,27 @@ export function useSubmitPayment() {
       transaction_id: string;
       screenshot_url?: string;
       notes?: string;
+      fee_invoice_item_ids?: string[];
     }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { error } = await supabase.from('payment_submissions').insert({
-        ...params,
-        submitted_by: user.id,
-      });
-      if (error) throw error;
+      const { school_id, ...body } = params;
+      void school_id; // schoolId is derived server-side from the caller's JWT, not sent
+      await api.post('/parent/payment-submissions', body);
     },
     onSuccess: () => {
       toast.success('Payment proof submitted! Admin will verify shortly.');
       qc.invalidateQueries({ queryKey: ['parent-payment-submissions'] });
       qc.invalidateQueries({ queryKey: ['parent-invoices'] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: any) => toast.error(e?.response?.data?.error || e.message),
   });
 }
 
-/** Admin: approve a submission (calls record_fee_payment RPC) */
+/** Admin: approve a submission (records a real Payment against the invoice) */
 export function useApproveSubmission() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (submission: PaymentSubmission) => {
-      // 1. Record the payment via existing RPC
-      const { error: rpcError } = await supabase.rpc('record_fee_payment', {
-        _school_id: submission.school_id,
-        _invoice_id: submission.invoice_id,
-        _student_id: submission.student_id,
-        _amount: submission.amount,
-        _payment_method: submission.payment_method || 'upi',
-        _transaction_id: submission.transaction_id,
-        _notes: `Verified from parent submission. ${submission.notes || ''}`.trim(),
-      });
-      if (rpcError) throw rpcError;
-
-      // 2. Update submission status
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('payment_submissions')
-        .update({
-          status: 'approved',
-          reviewed_by: user?.id,
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq('id', submission.id);
-      if (error) throw error;
+      await api.patch(`/school/fees/payment-submissions/${submission.id}/approve`);
     },
     onSuccess: () => {
       toast.success('Payment approved and receipt generated!');
@@ -135,7 +91,7 @@ export function useApproveSubmission() {
       qc.invalidateQueries({ queryKey: ['fee-invoices'] });
       qc.invalidateQueries({ queryKey: ['invoice-stats'] });
     },
-    onError: (e: Error) => toast.error(`Approval failed: ${e.message}`),
+    onError: (e: any) => toast.error(`Approval failed: ${e?.response?.data?.error || e.message}`),
   });
 }
 
@@ -144,22 +100,12 @@ export function useRejectSubmission() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase
-        .from('payment_submissions')
-        .update({
-          status: 'rejected',
-          rejection_reason: reason,
-          reviewed_by: user?.id,
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-      if (error) throw error;
+      await api.patch(`/school/fees/payment-submissions/${id}/reject`, { reason });
     },
     onSuccess: () => {
       toast.success('Submission rejected.');
       qc.invalidateQueries({ queryKey: ['payment-submissions'] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: any) => toast.error(e?.response?.data?.error || e.message),
   });
 }
