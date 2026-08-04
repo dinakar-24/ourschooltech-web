@@ -330,18 +330,6 @@ export function AdminLayout() {
     };
   }, []);
 
-  // Collapsing (icon-only) means less content in the nav than expanded --
-  // group labels shrink to dividers, open submenus disappear entirely. If
-  // the nav was scrolled down while expanded, the browser clamps scrollTop
-  // to fit the now-shorter content the instant it collapses, which reads as
-  // the whole sidebar snapping upward out of nowhere. Reset explicitly (and
-  // smoothly) instead of leaving that clamp to happen as an abrupt jump.
-  useEffect(() => {
-    if (effectiveCollapsed) {
-      navRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, [effectiveCollapsed]);
-
   const handleSidebarMouseEnter = () => {
     if (!isCollapsed) return;
     if (collapseTimeoutRef.current) {
@@ -360,6 +348,19 @@ export function AdminLayout() {
   };
 
   const effectiveCollapsed = isCollapsed && !isHoverExpanded;
+
+  // Collapsing (icon-only) means less content in the nav than expanded --
+  // group labels shrink to dividers, open submenus disappear entirely. If
+  // the nav was scrolled down while expanded, the browser clamps scrollTop
+  // to fit the now-shorter content the instant it collapses, which reads as
+  // the whole sidebar snapping upward out of nowhere. Reset explicitly (and
+  // smoothly) instead of leaving that clamp to happen as an abrupt jump.
+  useEffect(() => {
+    if (effectiveCollapsed) {
+      navRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [effectiveCollapsed]);
+
   // Auto-expand menu items based on current route
   const getInitialExpanded = () => {
     const expanded: string[] = [];
