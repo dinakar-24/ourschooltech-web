@@ -21,6 +21,7 @@ interface Props {
   schoolId: string;
   amount: number; // outstanding balance
   extraChargePct: number;
+  extraChargeThreshold?: number | null;
   customerName?: string;
   customerEmail?: string;
   customerPhone?: string;
@@ -31,7 +32,7 @@ interface Props {
 
 export function OnlinePaymentDialog({
   open, onOpenChange, invoiceId, studentId, schoolId,
-  amount, extraChargePct, customerName, customerEmail, customerPhone,
+  amount, extraChargePct, extraChargeThreshold, customerName, customerEmail, customerPhone,
   termName, components = [], paidAmount = 0,
 }: Props) {
   const isMobile = useIsMobile();
@@ -47,7 +48,12 @@ export function OnlinePaymentDialog({
 
   // Cap to balance
   const cappedAmount = Math.min(Math.round(payableAmount * 100) / 100, amount);
-  const extraCharge = Math.round((cappedAmount * extraChargePct / 100) * 100) / 100;
+  // Preview only -- the actual charge is computed server-side in
+  // createOrder from the school's own resolved config, this just needs to
+  // match that math so the parent isn't surprised at checkout. Surcharge
+  // applies only to the amount above the school's surcharge-free threshold.
+  const excessOverThreshold = Math.max(0, cappedAmount - (extraChargeThreshold ?? Infinity));
+  const extraCharge = Math.round((excessOverThreshold * extraChargePct / 100) * 100) / 100;
   const totalPayable = cappedAmount + extraCharge;
   const isValid = cappedAmount > 0;
 

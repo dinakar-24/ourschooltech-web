@@ -31,7 +31,7 @@ export default function ParentFees() {
   const { childProfile, fees, isLoading } = useParentData();
   const { data: invoices = [], isLoading: invoicesLoading } = useParentInvoices(childProfile?.id);
   const { data: submissions = [] } = useParentPaymentSubmissions(childProfile?.id);
-  const { data: payConfig } = usePaymentConfig(user?.schoolId);
+  const { data: payConfig } = usePaymentConfig();
 
   useFeeRealtime({
     studentId: childProfile?.id,
@@ -305,8 +305,8 @@ export default function ParentFees() {
                           {canSubmit && (
                             <p className="text-xs text-muted-foreground text-center">
                               Balance: ₹{Number(inv.balance).toLocaleString('en-IN')}
-                              {payConfig?.onlineEnabled && payConfig.extraChargePct > 0 && (
-                                <span> · Online: +{payConfig.extraChargePct}% gateway fee</span>
+                              {payConfig?.onlineEnabled && payConfig.surchargePct > 0 && (
+                                <span> · Online: +{payConfig.surchargePct}% gateway fee{payConfig.surchargeFreeThreshold ? ` above ₹${payConfig.surchargeFreeThreshold}` : ''}</span>
                               )}
                             </p>
                           )}
@@ -546,7 +546,8 @@ export default function ParentFees() {
           studentId={onlinePayInvoice.student_id}
           schoolId={user?.schoolId || ''}
           amount={Number(onlinePayInvoice.balance)}
-          extraChargePct={payConfig?.extraChargePct ?? 0}
+          extraChargePct={payConfig?.surchargePct ?? 0}
+          extraChargeThreshold={payConfig?.surchargeFreeThreshold}
           customerName={childProfile?.parent_name || childProfile?.full_name}
           customerEmail={childProfile?.parent_email || user?.email}
           termName={`Due ${new Date(onlinePayInvoice.due_date).toLocaleDateString('en-IN')}`}

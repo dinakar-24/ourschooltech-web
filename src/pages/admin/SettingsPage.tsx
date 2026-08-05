@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,13 +24,6 @@ import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { PaymentConfigSection } from '@/components/admin/PaymentConfigSection';
 
-// payment_config used to come through useSystemSettings (now SUPER_ADMIN-only
-// — see its migration note). This reads the narrow, explicit-shape
-// GET /api/settings/payment-flags instead, which any authenticated role can
-// call and which never exposes the raw system_settings table (some of its
-// other keys hold real secrets).
-const PAYMENT_FLAGS_FALLBACK = { online_enabled: true, manual_enabled: true, extra_charge_pct: 0 };
-
 const LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'hi', label: 'हिन्दी (Hindi)' },
@@ -49,14 +41,6 @@ export default function SettingsPage() {
   const schoolId = useEffectiveSchoolId();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('school');
-  const { data: paymentConfig = PAYMENT_FLAGS_FALLBACK } = useQuery({
-    queryKey: ['payment-flags'],
-    queryFn: async () => {
-      const { data } = await api.get('/settings/payment-flags');
-      return data;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
 
   const handleLanguageChange = (val: string) => {
     i18n.changeLanguage(val);
@@ -189,13 +173,7 @@ export default function SettingsPage() {
 
           {/* Payment Settings */}
           <TabsContent value="payments" className="space-y-5 mt-0">
-            {schoolId && (
-              <PaymentConfigSection
-                schoolId={schoolId}
-                globalOnlineEnabled={paymentConfig.online_enabled}
-                globalManualEnabled={paymentConfig.manual_enabled}
-              />
-            )}
+            {schoolId && <PaymentConfigSection />}
           </TabsContent>
 
           {/* Language Settings */}
