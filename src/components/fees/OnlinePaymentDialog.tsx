@@ -17,22 +17,18 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   invoiceId: string;
-  studentId: string;
-  schoolId: string;
   amount: number; // outstanding balance
   extraChargePct: number;
   extraChargeThreshold?: number | null;
   customerName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
   termName?: string;
   components?: FeeComponent[];
   paidAmount?: number;
 }
 
 export function OnlinePaymentDialog({
-  open, onOpenChange, invoiceId, studentId, schoolId,
-  amount, extraChargePct, extraChargeThreshold, customerName, customerEmail, customerPhone,
+  open, onOpenChange, invoiceId,
+  amount, extraChargePct, extraChargeThreshold, customerName,
   termName, components = [], paidAmount = 0,
 }: Props) {
   const isMobile = useIsMobile();
@@ -59,15 +55,7 @@ export function OnlinePaymentDialog({
 
   const handlePay = async () => {
     if (!isValid) return;
-    const result = await initiatePayment({
-      invoiceId,
-      studentId,
-      schoolId,
-      amount: cappedAmount,
-      customerName,
-      customerEmail,
-      customerPhone,
-    });
+    const result = await initiatePayment({ invoiceId, amount: cappedAmount });
     if (result.success || result.alreadyPaid) {
       onOpenChange(false);
     }

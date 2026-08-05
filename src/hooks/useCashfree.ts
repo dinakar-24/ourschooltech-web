@@ -1,26 +1,36 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { useQueryClient } from '@tanstack/react-query';
-import { invokeEdgeFunction } from '@/lib/api';
+import { api } from '@/lib/api';
+
+// ─────────────────────────────────────────────────────────────────────────
+// initiatePayment called invokeEdgeFunction('create-cashfree-order', ...) --
+// a Supabase Edge Function that can't work post-auth-migration (no live
+// Supabase session). It never reached POST /api/payment/create-order at
+// all: any call here failed at the edge-function invocation itself, before
+// even hitting a real endpoint. Found while investigating "Online
+// Payments" as a feature area -- this is the actual payment-initiation
+// call, so nothing about online payments (including the surcharge/gating
+// work already built) was reachable from the real app until this was
+// fixed.
+//
+// invoiceId/amount are all createOrder needs -- customer details and
+// schoolId are derived server-side from the invoice's own student/parent
+// and the caller's JWT, never trusted from the client.
+// ─────────────────────────────────────────────────────────────────────────
 
 interface InitiatePaymentParams {
   invoiceId: string;
-  studentId: string;
-  schoolId: string;
   amount: number;
-  customerName?: string;
-  customerEmail?: string;
-  customerPhone?: string;
 }
 
-interface CreateCashfreeOrderResponse {
-  payment_session_id: string;
-  cf_order_id: string;
-  order_amount: number;
-  extra_charge: number;
-  base_amount: number;
-  cashfree_mode?: 'sandbox' | 'production';
-  error?: string;
+interface CreateOrderResponse {
+  orderId: string;
+  paymentSessionId: string;
+  amount: number;
+  surchargeAmount: number;
+  totalCharge: number;
+  currency: string;
+  cashfreeMode: 'sandbox' | 'production';
 }
 
 // Load Cashfree JS SDK
@@ -40,78 +50,39 @@ function loadCashfreeSDK(): Promise<any> {
 
 export function useCashfree() {
   const [loading, setLoading] = useState(false);
-  const queryClient = useQueryClient();
-
-  const isMobile = () => {
-    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-      navigator.userAgent
-    ) || window.innerWidth < 768;
-  };
 
   const initiatePayment = useCallback(async (params: InitiatePaymentParams) => {
     setLoading(true);
     try {
-      const sessionData = await invokeEdgeFunction<CreateCashfreeOrderResponse>(
-        'create-cashfree-order',
-        {
-          invoice_id: params.invoiceId,
-          student_id: params.studentId,
-          school_id: params.schoolId,
-          amount: params.amount,
-          customer_name: params.customerName,
-          customer_email: params.customerEmail,
-          customer_phone: params.customerPhone,
-        },
-        { skipDedupe: true }
-      );
-
-      if (!sessionData?.payment_session_id) {
-        const errorMsg = sessionData?.error || 'Failed to create payment order';
-        const alreadyPaid = errorMsg.toLowerCase().includes('already paid');
-        toast.error(errorMsg);
-        setLoading(false);
-        return { success: false, alreadyPaid };
-      }
+      const { data } = await api.post<CreateOrderResponse>('/payment/create-order', {
+        invoiceId: params.invoiceId,
+        amount: params.amount,
+      });
 
       const Cashfree = await loadCashfreeSDK();
       const cashfree = Cashfree({
-        mode: sessionData.cashfree_mode === 'sandbox' ? 'sandbox' : 'production',
+        mode: data.cashfreeMode === 'production' ? 'production' : 'sandbox',
       });
 
       // Always use full-page redirect ('_self'). The Cashfree modal/iframe
       // renders a fixed desktop-width card on mobile browsers/Custom Tabs,
-      // whereas the hosted checkout page is fully responsive.
-      const result = await cashfree.checkout({
-        paymentSessionId: sessionData.payment_session_id,
+      // whereas the hosted checkout page is fully responsive. The page
+      // navigates away here -- ParentFees.tsx picks the result back up via
+      // the order_id it finds in the return_url on mount.
+      await cashfree.checkout({
+        paymentSessionId: data.paymentSessionId,
         redirectTarget: '_self',
       });
 
-      // If redirectTarget is '_self', the page navigates away — this code won't run.
-      // It only runs for '_modal' (desktop).
-      if (result?.error) {
-        toast.error(result.error.message || 'Payment was not completed. Please try again.');
-        setLoading(false);
-        return { success: false, alreadyPaid: false };
-      }
-
-      if (!result?.error) {
-        toast.success('Payment submitted. Status will update shortly after confirmation.');
-        queryClient.invalidateQueries({ queryKey: ['parent-invoices'] });
-        queryClient.invalidateQueries({ queryKey: ['fee-invoices'] });
-        queryClient.invalidateQueries({ queryKey: ['parent-data'] });
-        setLoading(false);
-        return { success: true, orderId: sessionData.cf_order_id };
-      }
-
-      setLoading(false);
-      return { success: false, alreadyPaid: false };
+      return { success: true, orderId: data.orderId };
     } catch (err: any) {
-      console.error('Cashfree payment error:', err);
-      toast.error('Payment failed: ' + (err.message || 'Unknown error'));
+      const errorMsg = err?.response?.data?.error || 'Failed to create payment order';
+      const alreadyPaid = errorMsg.toLowerCase().includes('already paid');
+      toast.error(errorMsg);
       setLoading(false);
-      return { success: false, alreadyPaid: false };
+      return { success: false, alreadyPaid };
     }
-  }, [queryClient]);
+  }, []);
 
   return { initiatePayment, loading };
 }

@@ -14,11 +14,11 @@ interface Props {
 export function InvoicePaymentStatus({ invoiceId, enabled = true }: Props) {
   const { data: payments = [] } = useOnlinePayments(enabled ? invoiceId : undefined);
 
-  // Show the latest attempt only. Hide expired attempts older than 1 hour to reduce noise.
+  // Show the latest attempt only. Hide failed attempts older than 1 hour to reduce noise.
   const latest = payments[0];
   if (!latest) return null;
 
-  if (latest.status === 'EXPIRED') {
+  if (latest.status === 'FAILED') {
     const ageMs = Date.now() - new Date(latest.created_at).getTime();
     if (ageMs > 60 * 60 * 1000) return null;
   }

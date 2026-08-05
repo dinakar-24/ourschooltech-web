@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { MobileLayout } from '@/components/layout/MobileLayout';
 import { toast } from 'sonner';
 import { useQueryClient } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,25 +52,40 @@ export default function ParentFees() {
   const [onlinePayInvoice, setOnlinePayInvoice] = useState<ParentInvoice | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Handle return from Cashfree full-page redirect (mobile)
+  // Handle return from Cashfree's full-page redirect. The redirect itself
+  // carries no reliable outcome (Cashfree doesn't append a payment_status
+  // param), so the real status has to be fetched -- this is the only
+  // caller of GET /payment/status/:orderId, which also reconciles our own
+  // Payment row (marks it SUCCESS/FAILED) as a safety net alongside the
+  // webhook.
   useEffect(() => {
-    const paymentStatus = searchParams.get('payment_status');
     const orderId = searchParams.get('order_id');
-    if (paymentStatus && orderId) {
-      // Invalidate queries to fetch fresh data
-      queryClient.invalidateQueries({ queryKey: ['parent-invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['fee-invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['parent-data'] });
+    if (!orderId) return;
 
-      if (paymentStatus === 'PAID' || paymentStatus === 'SUCCESS') {
-        toast.success('Payment successful! Your receipt is available below.');
-      } else if (paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED') {
-        toast.error('Payment was not completed. Please try again.');
+    (async () => {
+      try {
+        const { data } = await api.get<{ status: 'PENDING' | 'SUCCESS' | 'FAILED' | string }>(`/payment/status/${orderId}`);
+
+        if (data.status === 'SUCCESS') {
+          toast.success('Payment successful! Your receipt is available below.');
+        } else if (data.status === 'FAILED') {
+          toast.error('Payment was not completed. Please try again.');
+        }
+        // PENDING: say nothing here -- InvoicePaymentStatus's live timeline
+        // (and the webhook, async) will pick it up shortly.
+      } catch {
+        // Non-critical -- the invoice list and live timeline still reflect
+        // the real state once the webhook (or a later poll) lands.
+      } finally {
+        queryClient.invalidateQueries({ queryKey: ['parent-invoices'] });
+        queryClient.invalidateQueries({ queryKey: ['fee-invoices'] });
+        queryClient.invalidateQueries({ queryKey: ['parent-data'] });
+        queryClient.invalidateQueries({ queryKey: ['online-payments'] });
+        setSearchParams({}, { replace: true });
       }
-      // Clean URL params
-      setSearchParams({}, { replace: true });
-    }
-  }, [searchParams, setSearchParams, queryClient]);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
 
   // Invoice-based stats
@@ -543,13 +559,10 @@ export default function ParentFees() {
           open={onlinePayOpen}
           onOpenChange={setOnlinePayOpen}
           invoiceId={onlinePayInvoice.id}
-          studentId={onlinePayInvoice.student_id}
-          schoolId={user?.schoolId || ''}
           amount={Number(onlinePayInvoice.balance)}
           extraChargePct={payConfig?.surchargePct ?? 0}
           extraChargeThreshold={payConfig?.surchargeFreeThreshold}
           customerName={childProfile?.parent_name || childProfile?.full_name}
-          customerEmail={childProfile?.parent_email || user?.email}
           termName={`Due ${new Date(onlinePayInvoice.due_date).toLocaleDateString('en-IN')}`}
           components={(onlinePayInvoice.components || []).map(c => ({
             id: c.id,

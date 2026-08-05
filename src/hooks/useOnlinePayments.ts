@@ -1,65 +1,49 @@
-import { useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+
+// Migrated off a Supabase Realtime subscription on `online_payments` -- a
+// table the migrated backend never wrote to (payment.controller.js writes
+// the real Payment model instead), so this always came back empty. Now
+// reads GET /api/payment/online-attempts/:invoiceId, and polls instead of
+// subscribing (Express has no Realtime equivalent) -- same
+// Realtime-to-polling pattern as useFeeRealtime.ts, but on a short interval
+// since this is specifically the "watch a live checkout in progress" view,
+// and only while the latest attempt is still PENDING (nothing left to
+// change once it's resolved).
+const POLL_INTERVAL_MS = 5 * 1000;
 
 export interface OnlinePayment {
   id: string;
   invoice_id: string;
-  student_id: string;
-  school_id: string;
   amount: number;
   extra_charge: number;
   total_charged: number;
   cf_order_id: string | null;
   cf_payment_id: string | null;
   method: string | null;
-  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'EXPIRED';
+  status: 'PENDING' | 'SUCCESS' | 'FAILED';
   transaction_ref: string | null;
   created_at: string;
   verified_at: string | null;
 }
 
 /**
- * Fetch online payment attempts for an invoice, newest first, with realtime updates.
+ * Fetch online payment attempts for an invoice, newest first, polling
+ * while the latest one is still in flight.
  */
 export function useOnlinePayments(invoiceId: string | undefined) {
-  const queryClient = useQueryClient();
-  const queryKey = ['online-payments', invoiceId];
-
-  const query = useQuery({
-    queryKey,
+  return useQuery({
+    queryKey: ['online-payments', invoiceId],
     enabled: !!invoiceId,
-    staleTime: 15 * 1000,
+    staleTime: 0,
     queryFn: async (): Promise<OnlinePayment[]> => {
       if (!invoiceId) return [];
-      const { data, error } = await (supabase
-        .from('online_payments' as any)
-        .select('*')
-        .eq('invoice_id', invoiceId)
-        .order('created_at', { ascending: false })
-        .limit(10) as any);
-      if (error) throw error;
-      return (data || []) as OnlinePayment[];
+      const { data } = await api.get<{ payments: OnlinePayment[] }>(`/payment/online-attempts/${invoiceId}`);
+      return data.payments;
+    },
+    refetchInterval: (query) => {
+      const latest = query.state.data?.[0];
+      return latest && latest.status === 'PENDING' ? POLL_INTERVAL_MS : false;
     },
   });
-
-  useEffect(() => {
-    if (!invoiceId) return;
-    const channel = supabase
-      .channel(`online-payments-${invoiceId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'online_payments', filter: `invoice_id=eq.${invoiceId}` },
-        () => {
-          queryClient.invalidateQueries({ queryKey });
-        }
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceId]);
-
-  return query;
 }

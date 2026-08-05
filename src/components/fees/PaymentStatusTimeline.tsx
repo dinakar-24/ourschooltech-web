@@ -37,13 +37,10 @@ function buildSteps(p: OnlinePayment): Step[] {
     return [
       initiated,
       { key: 'processing', label: 'Processing at Cashfree', state: 'done' },
+      // Covers both an active decline and an abandoned/expired checkout --
+      // there's no separate "expired" state, an unpaid closed order is
+      // just a failed attempt.
       { key: 'failed', label: 'Payment Failed', hint: p.transaction_ref || 'Try again', state: 'failed' },
-    ];
-  }
-  if (p.status === 'EXPIRED') {
-    return [
-      initiated,
-      { key: 'expired', label: 'Session Expired', hint: 'Start a new payment', state: 'failed' },
     ];
   }
   // PENDING
@@ -75,8 +72,6 @@ function statusBadge(status: OnlinePayment['status']) {
       return { label: 'Success', cls: 'bg-success/10 text-success border-success/20' };
     case 'FAILED':
       return { label: 'Failed', cls: 'bg-destructive/10 text-destructive border-destructive/20' };
-    case 'EXPIRED':
-      return { label: 'Expired', cls: 'bg-muted text-muted-foreground border-border' };
     case 'PENDING':
     default:
       return { label: 'Processing', cls: 'bg-primary/10 text-primary border-primary/20' };
