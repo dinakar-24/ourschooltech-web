@@ -36,6 +36,22 @@ export default defineConfig(() => {
           skipWaiting: true,
           runtimeCaching: [
             {
+              // Always try the network first for navigation (the HTML
+              // shell) so a fixed deploy is visible on the very next load
+              // instead of getting stuck behind a service worker serving a
+              // precached shell from before the fix -- the shell's own
+              // cache-busting script can't rescue a load it never got to
+              // run for. Falls back to the cached shell only when
+              // genuinely offline. Must stay first in this list: Workbox
+              // checks routes in registration order.
+              urlPattern: ({ request }) => request.mode === "navigate",
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "html-shell",
+                networkTimeoutSeconds: 3,
+              },
+            },
+            {
               urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*/i,
               handler: "NetworkFirst",
               options: {
