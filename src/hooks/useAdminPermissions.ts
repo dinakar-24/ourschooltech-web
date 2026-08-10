@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
@@ -93,23 +93,22 @@ export function useMyAdminPermissions() {
     }
 
     const fetch = async () => {
-      const { data, error } = await supabase
-        .from('admin_permissions')
-        .select('module, can_access')
-        .eq('user_id', user.id);
-
-      if (error) {
+      try {
+        const { data } = await api.get('/school/my-permissions');
+        const rows = (data.permissions || []) as PermissionRow[];
+        if (rows.length === 0) {
+          // No permissions stored = full access (backward compat)
+          setPermissions(null);
+        } else {
+          const allowed = new Set<AdminModule>();
+          rows.forEach(row => {
+            if (row.can_access) allowed.add(row.module as AdminModule);
+          });
+          setPermissions(allowed);
+        }
+      } catch (error) {
         console.error('Error fetching permissions:', error);
         setPermissions(null);
-      } else if (!data || data.length === 0) {
-        // No permissions stored = full access (backward compat)
-        setPermissions(null);
-      } else {
-        const allowed = new Set<AdminModule>();
-        (data as PermissionRow[]).forEach(row => {
-          if (row.can_access) allowed.add(row.module as AdminModule);
-        });
-        setPermissions(allowed);
       }
       setLoading(false);
     };
@@ -135,39 +134,37 @@ export function useMyAdminPermissions() {
 /**
  * Hook for super admin to manage permissions for a specific admin user.
  */
+// schoolId stays in the signature so ManagePermissionsDialog.tsx (and
+// AdminCard.tsx/SchoolAdminsPage.tsx above it) need zero changes, but it's
+// no longer sent anywhere -- the backend derives it from the target user's
+// own record instead of trusting a client-supplied value.
 export function useManageAdminPermissions(userId: string, schoolId: string) {
   const [allowedModules, setAllowedModules] = useState<Set<AdminModule>>(new Set(ALL_ADMIN_MODULES));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const fetchPermissions = useCallback(async () => {
-    if (!userId || !schoolId) return;
+    if (!userId) return;
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('admin_permissions')
-      .select('module, can_access')
-      .eq('user_id', userId)
-      .eq('school_id', schoolId);
-
-    if (error) {
+    try {
+      const { data } = await api.get(`/superadmin/school-admins/${userId}/permissions`);
+      const rows = (data.permissions || []) as PermissionRow[];
+      if (rows.length === 0) {
+        // No permissions = full access
+        setAllowedModules(new Set(ALL_ADMIN_MODULES));
+      } else {
+        const allowed = new Set<AdminModule>();
+        rows.forEach(row => {
+          if (row.can_access) allowed.add(row.module as AdminModule);
+        });
+        setAllowedModules(allowed);
+      }
+    } catch (error) {
       console.error('Error:', error);
-      setLoading(false);
-      return;
-    }
-
-    if (!data || data.length === 0) {
-      // No permissions = full access
-      setAllowedModules(new Set(ALL_ADMIN_MODULES));
-    } else {
-      const allowed = new Set<AdminModule>();
-      (data as PermissionRow[]).forEach(row => {
-        if (row.can_access) allowed.add(row.module as AdminModule);
-      });
-      setAllowedModules(allowed);
     }
     setLoading(false);
-  }, [userId, schoolId]);
+  }, [userId]);
 
   useEffect(() => {
     fetchPermissions();
@@ -187,30 +184,19 @@ export function useManageAdminPermissions(userId: string, schoolId: string) {
   };
 
   const savePermissions = async () => {
-    if (!userId || !schoolId) return false;
+    if (!userId) return false;
     setSaving(true);
 
     try {
-      // Delete existing permissions for this user+school
-      await supabase
-        .from('admin_permissions')
-        .delete()
-        .eq('user_id', userId)
-        .eq('school_id', schoolId);
+      // Full module -> canAccess map every time, same delete-all+insert-all
+      // shape the old Supabase version used -- an explicit "everything
+      // revoked" save needs to stay distinguishable from "never configured"
+      // on the read side, which only an empty result set (not an all-false
+      // one) means "unrestricted".
+      const modules: Record<string, boolean> = {};
+      ALL_ADMIN_MODULES.forEach(module => { modules[module] = allowedModules.has(module); });
 
-      // Insert new permissions
-      const rows = ALL_ADMIN_MODULES.map(module => ({
-        user_id: userId,
-        school_id: schoolId,
-        module,
-        can_access: allowedModules.has(module),
-      }));
-
-      const { error } = await supabase
-        .from('admin_permissions')
-        .insert(rows);
-
-      if (error) throw error;
+      await api.put(`/superadmin/school-admins/${userId}/permissions`, { modules });
 
       toast.success('Permissions updated successfully');
       return true;

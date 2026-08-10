@@ -1,5 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+// Still used by useErrorLogs/useLoginAttempts below -- both stay on
+// Supabase for now, deliberately deferred (see the memory note on this
+// batch: neither error_logs nor login_attempts has a real write side yet,
+// so porting the read side alone would just show an empty page).
 import { supabase } from '@/integrations/supabase/client';
 import { SuperAdminLayout } from '@/components/layout/SuperAdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,13 +84,15 @@ function useLoginAttempts() {
   });
 }
 
+// Migrated to /api/superadmin/system-health/* -- read-only against the real
+// BullMQ/Redis queues (fee-reminders, razorpay-webhooks), no Postgres model
+// behind this. See systemHealth.controller.js for the BullMQ-state mapping.
 function useJobStats() {
   return useQuery({
     queryKey: ['job-queue-stats'],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_job_queue_stats' as any);
-      if (error) throw error;
-      return (data as unknown as JobStats) ?? { queued: 0, processing: 0, completed_24h: 0, failed_24h: 0, retrying: 0 };
+      const { data } = await api.get('/superadmin/system-health/job-stats');
+      return data as JobStats;
     },
     staleTime: 30_000,
   });
@@ -95,12 +102,8 @@ function useRecentJobs() {
   return useQuery({
     queryKey: ['recent-jobs'],
     queryFn: async () => {
-      const { data, error } = await (supabase.from('jobs' as any) as any)
-        .select('id, created_at, job_type, status, attempts, max_attempts, error_message, scheduled_for, started_at, completed_at')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      return (data ?? []) as JobRecord[];
+      const { data } = await api.get('/superadmin/system-health/recent-jobs');
+      return (data.jobs ?? []) as JobRecord[];
     },
     staleTime: 30_000,
   });
