@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 export interface SchoolAiSettings {
@@ -19,24 +19,26 @@ const DEFAULTS: SchoolAiSettings = {
 };
 
 export function useSchoolAiSettings() {
-  const { user, school } = useAuth();
-  const schoolId = school?.id ?? (user as any)?.schoolId ?? null;
+  const { user } = useAuth();
 
+  // ai_defaults is a genuinely global platform setting (per-school overrides
+  // were descoped in v1 -- see the route's own comment), so this no longer
+  // depends on schoolId at all. Gating on `user` instead of the old `schoolId`
+  // check matters specifically for super admins, who have no schoolId of
+  // their own: the old check meant this query never ran for them and they
+  // always saw the hardcoded DEFAULTS instead of whatever's actually
+  // configured (e.g. AI disabled platform-wide would still show the FAB).
   const { data } = useQuery({
-    queryKey: ['school-ai-settings', schoolId],
-    enabled: !!schoolId,
+    queryKey: ['ai-defaults'],
+    enabled: !!user,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_school_ai_settings' as any, { _school_id: schoolId });
-      if (error) throw error;
+      const { data } = await api.get('/settings/ai-defaults');
       return { ...DEFAULTS, ...(data as Partial<SchoolAiSettings> || {}) };
     },
   });
 
-  // Super admin has no school context; always allow
-  const settings: SchoolAiSettings = !schoolId
-    ? DEFAULTS
-    : (data as SchoolAiSettings) ?? DEFAULTS;
+  const settings: SchoolAiSettings = (data as SchoolAiSettings) ?? DEFAULTS;
 
   return {
     settings,

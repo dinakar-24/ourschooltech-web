@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
@@ -7,16 +6,8 @@ import { format } from 'date-fns';
 import { queryKeys } from '@/lib/query-keys';
 
 // ─────────────────────────────────────────────────────────────────────────
-// Only useClassAttendance and useMarkAttendance have a live consumer
-// (TeacherAttendance.tsx) — those two are migrated to
-// GET/POST /api/teacher/attendance[/mark].
-//
-// useAttendance, useAttendanceSummary and useStudentAttendance are unused
-// (no importer anywhere in src/) and left on Supabase rather than invented
-// against a made-up shape: the closest Express routes
-// (/api/school/attendance, /api/school/attendance/summary) are per-section,
-// not the school-wide/date-range queries these hooks make, so porting them
-// needs a real consumer to design against, not a guess.
+// useClassAttendance and useMarkAttendance are migrated to
+// GET/POST /api/teacher/attendance[/mark] (TeacherAttendance.tsx).
 //
 // The old absence-notification flow in useMarkAttendance.onSuccess is DROPPED,
 // not ported: it read `students.parent_email` and looked up `profiles` by
@@ -45,101 +36,6 @@ const STATUS_FROM_API: Record<string, AttendanceStatusValue> = {
   LATE: 'late',
   HALF_DAY: 'half_day',
 };
-
-export interface AttendanceRecord {
-  id: string;
-  student_id: string;
-  school_id: string;
-  date: string;
-  status: AttendanceStatusValue;
-  notes: string | null;
-  marked_by: string | null;
-  created_at: string;
-  student?: {
-    id: string;
-    full_name: string;
-    admission_number: string;
-    roll_number: number | null;
-    class_name: string;
-    section: string;
-  };
-}
-
-export interface AttendanceSummary {
-  present: number;
-  absent: number;
-  late: number;
-  half_day: number;
-  total: number;
-}
-
-export function useAttendance(date: Date, filters?: {
-  className?: string;
-  section?: string;
-}) {
-  const schoolId = useEffectiveSchoolId();
-  const dateStr = format(date, 'yyyy-MM-dd');
-
-  return useQuery({
-    queryKey: queryKeys.attendance(schoolId, dateStr, filters),
-    queryFn: async () => {
-      if (!schoolId) throw new Error('No school ID');
-
-      let query = supabase
-        .from('attendance')
-        .select(`
-          *,
-          student:students!inner(id, full_name, admission_number, roll_number, class_name, section)
-        `)
-        .eq('school_id', schoolId)
-        .eq('date', dateStr);
-
-      if (filters?.className && filters.className !== 'All Classes') {
-        query = query.eq('student.class_name', filters.className);
-      }
-      if (filters?.section && filters.section !== 'All Sections') {
-        query = query.eq('student.section', filters.section);
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      return data as AttendanceRecord[];
-    },
-    enabled: !!schoolId,
-    staleTime: 1 * 60 * 1000,
-  });
-}
-
-export function useAttendanceSummary(date: Date) {
-  const schoolId = useEffectiveSchoolId();
-  const dateStr = format(date, 'yyyy-MM-dd');
-
-  return useQuery({
-    queryKey: queryKeys.attendanceSummary(schoolId, dateStr),
-    queryFn: async (): Promise<AttendanceSummary> => {
-      if (!schoolId) throw new Error('No school ID');
-
-      const { data, error } = await supabase.rpc('get_attendance_summary' as any, {
-        _school_id: schoolId,
-        _date: dateStr,
-      } as any);
-
-      if (error) throw error;
-
-      const result = data as any;
-      return {
-        present: Number(result?.present ?? 0),
-        absent: Number(result?.absent ?? 0),
-        late: Number(result?.late ?? 0),
-        half_day: Number(result?.half_day ?? 0),
-        total: Number(result?.total ?? 0),
-      };
-    },
-    enabled: !!schoolId,
-    staleTime: 2 * 60 * 1000,
-  });
-}
 
 /** Raw shape of GET /api/teacher/attendance */
 interface RawTeacherAttendanceRow {
@@ -264,32 +160,5 @@ export function useMarkAttendance() {
       queryClient.invalidateQueries({ queryKey: queryKeys.allAttendanceSummary });
       queryClient.invalidateQueries({ queryKey: queryKeys.allClassAttendance });
     },
-  });
-}
-
-export function useStudentAttendance(studentId: string, startDate?: Date, endDate?: Date) {
-  return useQuery({
-    queryKey: queryKeys.studentAttendance(studentId, startDate, endDate),
-    queryFn: async () => {
-      let query = supabase
-        .from('attendance')
-        .select('*')
-        .eq('student_id', studentId)
-        .order('date', { ascending: false });
-
-      if (startDate) {
-        query = query.gte('date', format(startDate, 'yyyy-MM-dd'));
-      }
-      if (endDate) {
-        query = query.lte('date', format(endDate, 'yyyy-MM-dd'));
-      }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-      return data as AttendanceRecord[];
-    },
-    enabled: !!studentId,
-    staleTime: 2 * 60 * 1000,
   });
 }
