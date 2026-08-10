@@ -4,6 +4,7 @@ interface ImpersonatedSchool {
   id: string;
   name: string;
   logo?: string;
+  subdomain?: string;
 }
 
 interface ImpersonationContextType {

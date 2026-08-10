@@ -99,7 +99,7 @@ export default function SchoolsPage() {
   }, []);
 
   const handleImpersonate = useCallback((school: School) => {
-    startImpersonation({ id: school.id, name: school.name });
+    startImpersonation({ id: school.id, name: school.name, subdomain: school.subdomain });
     navigate('/admin/dashboard');
   }, [startImpersonation, navigate]);
 

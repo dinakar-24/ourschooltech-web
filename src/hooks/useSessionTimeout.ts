@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { UserRole } from '@/contexts/AuthContext';
 
 const ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart'];
@@ -26,24 +26,17 @@ export function useSessionTimeout(
   useEffect(() => {
     if (!role) return;
 
+    const defaults: Record<string, number> = {
+      super_admin: 30, school_admin: 60, teacher: 480, parent: 4320, student: 4320,
+    };
+
     const fetchTimeout = async () => {
-      const { data, error } = await supabase
-        .from('system_settings' as any)
-        .select('value')
-        .eq('key', 'session_security')
-        .single();
-
-      if (error || !data) {
-        const defaults: Record<string, number> = {
-          super_admin: 30, school_admin: 60, teacher: 480, parent: 4320, student: 4320,
-        };
+      try {
+        const { data } = await api.get('/settings/session-timeout');
+        timeoutMinutesRef.current = Number(data.timeoutMinutes) || defaults[role] || 60;
+      } catch {
         timeoutMinutesRef.current = defaults[role] ?? 60;
-        return;
       }
-
-      const settings = (data as any).value;
-      const key = `timeout_${role}`;
-      timeoutMinutesRef.current = parseInt(settings[key] ?? '60', 10);
     };
 
     fetchTimeout();

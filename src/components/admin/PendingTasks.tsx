@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { ChevronRight, CreditCard, ClipboardList } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 
 export function PendingTasks() {
@@ -10,11 +10,8 @@ export function PendingTasks() {
   const { data: pendingFees = 0 } = useQuery({
     queryKey: ['pending-fees-count', schoolId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_pending_fee_student_count' as any, {
-        _school_id: schoolId,
-      } as any);
-      if (error) throw error;
-      return Number(data ?? 0);
+      const { data } = await api.get('/school/reports/stats');
+      return Number(data?.pendingFeeStudentCount ?? 0);
     },
     enabled: !!schoolId,
     staleTime: 5 * 60 * 1000,

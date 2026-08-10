@@ -1,6 +1,6 @@
 import { CreditCard, UserPlus, Bell } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 
 export function TodaysSummary() {
@@ -9,15 +9,11 @@ export function TodaysSummary() {
   const { data } = useQuery({
     queryKey: ['today-summary', schoolId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_admin_dashboard_full' as any, {
-        _school_id: schoolId,
-      } as any);
-      if (error) throw error;
-      const r = data as any;
+      const { data } = await api.get('/school/reports/stats');
       return {
-        feesCollected: Number(r?.todayFeesCollected ?? 0),
-        newAdmissions: Number(r?.todayAdmissions ?? 0),
-        noticesSent: Number(r?.todayNotices ?? 0),
+        feesCollected: Number(data?.todayFeesCollected ?? 0),
+        newAdmissions: Number(data?.todayAdmissions ?? 0),
+        noticesSent: Number(data?.todayNotices ?? 0),
       };
     },
     enabled: !!schoolId,

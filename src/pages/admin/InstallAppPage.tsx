@@ -2,9 +2,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
 import { useTenant } from '@/contexts/TenantContext';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
-import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Smartphone, CheckCircle2, Download } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -18,25 +15,17 @@ export default function InstallAppPage() {
   const { impersonatedSchool, isImpersonating } = useImpersonation();
   const { tenant, isSubdomain } = useTenant();
   const { isInstalled, promptInstall } = useInstallPrompt();
-  const schoolId = useEffectiveSchoolId();
   const [installing, setInstalling] = useState(false);
 
   const displaySchool = isImpersonating ? impersonatedSchool : school;
 
-  const { data: schoolSubdomain } = useQuery({
-    queryKey: ['school-subdomain', schoolId],
-    queryFn: async () => {
-      const { data } = await supabase.from('schools').select('subdomain').eq('id', schoolId!).single();
-      return data?.subdomain || null;
-    },
-    enabled: !!schoolId && !isSubdomain,
-    staleTime: Infinity,
-  });
-
+  // Already on the auth response / impersonation payload -- no separate
+  // fetch needed (AuthContext's school.subdomain is populated straight off
+  // the login response, and startImpersonation now carries it too).
   const portalUrl = isSubdomain && tenant
     ? `https://${tenant.subdomain}.${BASE_DOMAIN}`
-    : schoolSubdomain
-      ? `https://${schoolSubdomain}.${BASE_DOMAIN}`
+    : displaySchool?.subdomain
+      ? `https://${displaySchool.subdomain}.${BASE_DOMAIN}`
       : window.location.origin;
 
   const handleInstall = async () => {

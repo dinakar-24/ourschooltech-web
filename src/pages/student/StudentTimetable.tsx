@@ -10,7 +10,7 @@ import { useStudentProfile } from '@/hooks/useStudentData';
 import { useMyTimetable } from '@/hooks/useTimetableEntries';
 import { TimetableGrid } from '@/components/timetable/TimetableGrid';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTranslation } from 'react-i18next';
 
@@ -32,15 +32,11 @@ export default function StudentTimetable() {
     queryKey: ['timetable-image', schoolId, className, section],
     queryFn: async () => {
       if (!schoolId || !className) return null;
-      const { data, error } = await supabase
-        .from('timetable_images' as any)
-        .select('*')
-        .eq('school_id', schoolId)
-        .eq('class_name', className)
-        .eq('section', section)
-        .maybeSingle();
-      if (error) throw error;
-      return data as unknown as { id: string; image_url: string; updated_at: string } | null;
+      const { data } = await api.get('/student/timetable-images', {
+        params: { className, section },
+      });
+      if (!data.image) return null;
+      return { id: data.image.id, image_url: data.image.imageUrl, updated_at: data.image.updatedAt };
     },
     enabled: !!schoolId && !!className,
   });

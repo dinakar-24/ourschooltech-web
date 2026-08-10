@@ -20,7 +20,7 @@ import { useClasses } from '@/hooks/useClasses';
 import { useTimetableEntries } from '@/hooks/useTimetableEntries';
 import { TimetableGrid } from '@/components/timetable/TimetableGrid';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
 export default function TeacherTimetable() {
   const { user } = useAuth();
@@ -58,15 +58,11 @@ export default function TeacherTimetable() {
     queryKey: ['timetable-image', schoolId, selectedClass, selectedSection],
     queryFn: async () => {
       if (!schoolId || !selectedClass) return null;
-      const { data, error } = await supabase
-        .from('timetable_images' as any)
-        .select('*')
-        .eq('school_id', schoolId)
-        .eq('class_name', selectedClass)
-        .eq('section', selectedSection)
-        .maybeSingle();
-      if (error) throw error;
-      return data as unknown as { id: string; image_url: string; updated_at: string } | null;
+      const { data } = await api.get('/school/timetable-images', {
+        params: { className: selectedClass, section: selectedSection },
+      });
+      if (!data.image) return null;
+      return { id: data.image.id, image_url: data.image.imageUrl, updated_at: data.image.updatedAt };
     },
     enabled: !!schoolId && !!selectedClass,
   });
