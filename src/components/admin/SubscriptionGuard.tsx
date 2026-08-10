@@ -3,6 +3,7 @@ import { useSubscriptionStatus } from '@/hooks/useSubscription';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, Lock, CreditCard } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -31,7 +32,19 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
     return <>{children}</>;
   }
 
-  if (isLoading) return null;
+  // A blocking DB round-trip (school's own connection, not this page's) can
+  // genuinely take a few seconds under load -- rendering nothing here reads
+  // as "the app is broken", not "the app is loading". Match the app's other
+  // skeleton loading states instead of leaving the page dark.
+  if (isLoading) {
+    return (
+      <div className="space-y-3 p-1">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
 
   // Suspended
   if ((subscription?.status as string) === 'suspended') {

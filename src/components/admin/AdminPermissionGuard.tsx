@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useMyAdminPermissions, PATH_TO_MODULE } from '@/hooks/useAdminPermissions';
 import { useAuth } from '@/contexts/AuthContext';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface AdminPermissionGuardProps {
   children: React.ReactNode;
@@ -17,7 +18,17 @@ export function AdminPermissionGuard({ children }: AdminPermissionGuardProps) {
 
   // Only restrict school_admin, not super_admin viewing as admin
   if (!user || user.role !== 'school_admin') return <>{children}</>;
-  if (loading) return null;
+  // Same reasoning as SubscriptionGuard: a slow permissions check should
+  // read as "loading", not blank the whole page.
+  if (loading) {
+    return (
+      <div className="space-y-3 p-1">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-24 w-full" />
+        <Skeleton className="h-24 w-full" />
+      </div>
+    );
+  }
 
   // Extract the path segment after /admin/
   const match = location.pathname.match(/^\/admin(\/[^/]+)/);
