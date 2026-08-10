@@ -12,6 +12,7 @@ import { PaymentReceiptDialog } from '@/components/fees/PaymentReceiptDialog';
 import { ApplyDiscountDialog } from '@/components/fees/ApplyDiscountDialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useFeeRealtime } from '@/hooks/useFeeRealtime';
+import { computeComponentBalances } from '@/lib/fee-waterfall';
 import {
   ArrowLeft, FileText, CreditCard, Receipt, Percent, CheckCircle, AlertCircle, User, Phone, Users,
 } from 'lucide-react';
@@ -230,18 +231,20 @@ export default function StudentFeesPage() {
                       </div>
 
                       {/* Fee Components */}
-                      {(inv.components || []).length > 0 && (
+                      {(inv.components || []).length > 0 && (() => {
+                        const effectivePaid = Number(inv.total_amount) - Number(inv.balance);
+                        const balances = computeComponentBalances(
+                          (inv.components || []).map(c => ({ id: c.id, fee_type: c.fee_type, amount: Number(c.amount) })),
+                          effectivePaid
+                        );
+                        return (
                         <table className="w-full text-sm">
                           <tbody>
                             {(inv.components || []).map(c => {
-                              const componentAmount = Number(c.amount);
-                              const paidForComponent = (inv.payments || []).reduce((sum, p) => {
-                                const notesLower = (p.notes || '').toLowerCase();
-                                const feeTypeLower = c.fee_type.toLowerCase();
-                                if (notesLower.includes(feeTypeLower)) return sum + Number(p.amount);
-                                return sum;
-                              }, 0);
-                              const remainingAmount = Math.max(0, componentAmount - paidForComponent);
+                              const bal = balances.find(b => b.id === c.id)!;
+                              const componentAmount = bal.original_amount;
+                              const paidForComponent = bal.paid;
+                              const remainingAmount = bal.remaining;
                               const canPayComponent = inv.status !== 'paid' && remainingAmount > 0;
                               const payableAmount = Math.min(remainingAmount, Number(inv.balance));
                               const isFullyPaid = remainingAmount === 0;
@@ -289,7 +292,8 @@ export default function StudentFeesPage() {
                             </tr>
                           </tbody>
                         </table>
-                      )}
+                        );
+                      })()}
 
                       {/* Payments */}
                       {(inv.payments || []).length > 0 && (
