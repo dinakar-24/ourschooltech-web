@@ -19,7 +19,7 @@ import { SubmitPaymentDialog } from '@/components/fees/SubmitPaymentDialog';
 import { OnlinePaymentDialog } from '@/components/fees/OnlinePaymentDialog';
 import { InvoicePaymentStatus } from '@/components/fees/InvoicePaymentStatus';
 import { FeeInvoice, FeePayment } from '@/hooks/useFeeInvoices';
-import { computeComponentBalances } from '@/lib/fee-waterfall';
+import { allocateComponentBalances } from '@/lib/fee-waterfall';
 import {
   CreditCard, CheckCircle, AlertCircle, Clock, IndianRupee, TrendingUp,
   Loader2, Receipt, Building2, Percent, ChevronDown, ChevronRight, Send, Wifi,
@@ -351,10 +351,9 @@ export default function ParentFees() {
 
                           {/* Fee Breakdown - Clean Cards */}
                           {(inv.components || []).length > 0 && (() => {
-                            const effectivePaid = Number(inv.total_amount) - Number(inv.balance);
-                            const balances = computeComponentBalances(
+                            const balances = allocateComponentBalances(
                               (inv.components || []).map(c => ({ id: c.id, fee_type: c.fee_type, amount: Number(c.amount) })),
-                              effectivePaid
+                              (inv.payments || []).map(p => ({ amount: Number(p.amount), fee_item_id: p.fee_item_id }))
                             );
                             return (
                               <div>

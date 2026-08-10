@@ -235,6 +235,7 @@ export function PaymentReceiptDialog({ open, onOpenChange, payment, invoice, cop
   const remainingBalance = Math.max(0, totalFees - totalPaidTillDate);
 
   const componentAllocations = (invoice.components || []).map((component) => ({
+    id: component.id,
     fee_type: component.fee_type,
     amount: Number(component.amount),
     prevPaid: 0,
@@ -245,10 +246,13 @@ export function PaymentReceiptDialog({ open, onOpenChange, payment, invoice, cop
 
   const relevantPayments = currentPaymentIndex >= 0 ? allPayments.slice(0, currentPaymentIndex + 1) : allPayments;
 
-  const findTargetComponentIndex = (notes: string | null | undefined) => {
-    if (!notes) return -1;
-    const normalizedNotes = notes.toLowerCase();
-    return componentAllocations.findIndex((component) => normalizedNotes.includes(component.fee_type.toLowerCase()));
+  // Direct attribution for payments recorded against one specific component
+  // (the admin's "Pay <component>" button, or a submission naming exactly
+  // one item) -- fee_item_id is a real FK, not a guess. Payments without one
+  // ("Pay All", multi-item submissions) fall through to the waterfall below.
+  const findTargetComponentIndex = (feeItemId: string | null | undefined) => {
+    if (!feeItemId) return -1;
+    return componentAllocations.findIndex((component) => component.id === feeItemId);
   };
 
   relevantPayments.forEach((paid) => {
@@ -256,7 +260,7 @@ export function PaymentReceiptDialog({ open, onOpenChange, payment, invoice, cop
     if (remainingAmount <= 0 || componentAllocations.length === 0) return;
 
     const isCurrentPayment = paid.id === payment.id;
-    const targetIndex = findTargetComponentIndex(paid.notes);
+    const targetIndex = findTargetComponentIndex(paid.fee_item_id);
 
     if (targetIndex >= 0) {
       const target = componentAllocations[targetIndex];

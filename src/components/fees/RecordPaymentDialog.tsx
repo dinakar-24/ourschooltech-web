@@ -24,9 +24,18 @@ interface RecordPaymentDialogProps {
   invoice: FeeInvoice | null;
   prefillAmount?: number;
   prefillLabel?: string;
+  // Real FeeInvoiceItem id for the component this dialog was opened to pay
+  // (set together with prefillLabel by the "Pay <component>" buttons) --
+  // sent through so the payment is attributed to that exact component
+  // instead of being guessed later by the order-based waterfall.
+  prefillItemId?: string;
+  // Fired with the newly created payment (camelCase, straight off the API
+  // response) once recording succeeds, so the caller can show its receipt
+  // immediately instead of making the admin go find it in Payment History.
+  onPaid?: (payment: { id: string; receiptNo: string | null }) => void;
 }
 
-export function RecordPaymentDialog({ open, onOpenChange, invoice, prefillAmount, prefillLabel }: RecordPaymentDialogProps) {
+export function RecordPaymentDialog({ open, onOpenChange, invoice, prefillAmount, prefillLabel, prefillItemId, onPaid }: RecordPaymentDialogProps) {
   const { user } = useAuth();
   const recordPayment = useRecordInvoicePayment();
 
@@ -82,7 +91,7 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice, prefillAmount
     if (!invoice || !canSubmit()) return;
 
     try {
-      await recordPayment.mutateAsync({
+      const paid = await recordPayment.mutateAsync({
         invoice_id: invoice.id,
         student_id: invoice.student_id,
         amount: Number(amount),
@@ -94,8 +103,10 @@ export function RecordPaymentDialog({ open, onOpenChange, invoice, prefillAmount
         payment_date: format(paymentDate, 'yyyy-MM-dd'),
         received_by: isCash ? (user?.name || 'Staff') : undefined,
         notes: notes || undefined,
+        fee_item_id: prefillItemId,
       });
       handleClose(false);
+      onPaid?.(paid);
     } catch {
       // handled by hook
     }

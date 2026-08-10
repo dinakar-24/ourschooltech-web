@@ -42,6 +42,9 @@ export interface FeePayment {
   receipt_number: string;
   notes: string | null;
   created_at: string;
+  // Which single fee component this payment was attributed to -- null for
+  // "Pay All" and multi-item submissions. See fee-waterfall.ts.
+  fee_item_id: string | null;
 }
 
 export interface FeeInvoice {
@@ -114,6 +117,7 @@ export interface RawInvoice {
     receiptNo: string | null;
     paidAt: string | null;
     createdAt: string;
+    feeItemId: string | null;
   }>;
 }
 
@@ -165,6 +169,7 @@ export function mapInvoice(raw: RawInvoice): FeeInvoice {
       payment_date: p.paidAt ?? p.createdAt,
       receipt_number: p.receiptNo ?? '',
       created_at: p.createdAt,
+      fee_item_id: p.feeItemId,
       // ⚠️ Prisma's Payment model has no columns for these — they render
       // blank until a schema migration adds them.
       cheque_number: null,
@@ -352,26 +357,38 @@ export function useRecordInvoicePayment() {
       payment_date: string;
       received_by?: string;
       notes?: string;
+      // Real FeeInvoiceItem id when this payment targets one specific
+      // component (the "Pay <component>" buttons) -- omitted for "Pay All".
+      fee_item_id?: string;
     }) => {
       if (!schoolId) throw new Error('No school ID');
 
       // ⚠️ Prisma's Payment model has no columns for cheque_number,
-      // cheque_date, bank_name, received_by or notes, and the endpoint takes
-      // no payment_date (it stamps paidAt itself). Those five inputs are
+      // cheque_date, bank_name or received_by, and the endpoint takes no
+      // payment_date (it stamps paidAt itself). Those four inputs are
       // accepted by the dialog but **silently dropped** until a schema
       // migration adds them — the payment amount and receipt are unaffected.
+      // transactionId and feeItemId are real columns and do get persisted.
       const { data } = await api.post(`/school/fees/invoices/${payment.invoice_id}/pay`, {
         amount: payment.amount,
         // PaymentMethod is an uppercase Prisma enum.
         method: String(payment.payment_method || '').toUpperCase(),
+        transactionId: payment.transaction_id || undefined,
+        feeItemId: payment.fee_item_id || undefined,
         remarks: payment.notes || undefined,
       });
 
       return data.payment ?? data;
     },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.allFeeInvoices });
-      queryClient.invalidateQueries({ queryKey: queryKeys.allInvoiceStats });
+    onSuccess: async (data: any) => {
+      // Awaited so a caller doing `await mutateAsync(...)` sees the
+      // invoice list already reflecting this payment -- StudentFeesPage
+      // relies on that to auto-open the receipt with fresh data instead of
+      // racing the background refetch.
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.allFeeInvoices }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.allInvoiceStats }),
+      ]);
       toast.success(`Payment recorded! Receipt: ${data?.receiptNo ?? data?.receipt_number ?? ''}`);
     },
     onError: (error: any) => {

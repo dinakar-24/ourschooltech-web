@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStudentFeeInvoices } from '@/hooks/useStudentFeeInvoices';
 import { FeeInvoice, FeePayment } from '@/hooks/useFeeInvoices';
@@ -12,7 +12,7 @@ import { PaymentReceiptDialog } from '@/components/fees/PaymentReceiptDialog';
 import { ApplyDiscountDialog } from '@/components/fees/ApplyDiscountDialog';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useFeeRealtime } from '@/hooks/useFeeRealtime';
-import { computeComponentBalances } from '@/lib/fee-waterfall';
+import { allocateComponentBalances } from '@/lib/fee-waterfall';
 import {
   ArrowLeft, FileText, CreditCard, Receipt, Percent, CheckCircle, AlertCircle, User, Phone, Users,
 } from 'lucide-react';
@@ -79,11 +79,18 @@ export default function StudentFeesPage() {
   const [paymentInvoice, setPaymentInvoice] = useState<FeeInvoice | null>(null);
   const [paymentPrefillAmount, setPaymentPrefillAmount] = useState<number | undefined>();
   const [paymentPrefillLabel, setPaymentPrefillLabel] = useState<string | undefined>();
+  const [paymentPrefillItemId, setPaymentPrefillItemId] = useState<string | undefined>();
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [receiptPayment, setReceiptPayment] = useState<FeePayment | null>(null);
   const [receiptInvoice, setReceiptInvoice] = useState<FeeInvoice | null>(null);
   const [discountDialogOpen, setDiscountDialogOpen] = useState(false);
   const [discountInvoice, setDiscountInvoice] = useState<FeeInvoice | null>(null);
+  // Set right after a payment is recorded; cleared once the invalidated
+  // invoices query lands with that payment and its receipt auto-opens.
+  // Reactive rather than a direct lookup because mutateAsync resolving
+  // doesn't itself guarantee this component has re-rendered with the fresh
+  // `invoices` the effect below reads.
+  const [pendingReceipt, setPendingReceipt] = useState<{ invoiceId: string; paymentId: string } | null>(null);
 
   const loading = isLoading;
 
@@ -102,10 +109,11 @@ export default function StudentFeesPage() {
 
   const student: any = invoices[0]?.student;
 
-  const openPayment = (inv: FeeInvoice, componentAmount?: number, componentLabel?: string) => {
+  const openPayment = (inv: FeeInvoice, componentAmount?: number, componentLabel?: string, componentId?: string) => {
     setPaymentInvoice(inv);
     setPaymentPrefillAmount(componentAmount);
     setPaymentPrefillLabel(componentLabel);
+    setPaymentPrefillItemId(componentId);
     setPaymentDialogOpen(true);
   };
 
@@ -114,6 +122,19 @@ export default function StudentFeesPage() {
     setReceiptInvoice(invoice);
     setReceiptDialogOpen(true);
   };
+
+  // Once the payment just recorded shows up in a freshly-refetched invoice,
+  // open its receipt automatically instead of leaving the admin to find it
+  // in Payment History themselves.
+  useEffect(() => {
+    if (!pendingReceipt) return;
+    const inv = invoices.find(i => i.id === pendingReceipt.invoiceId);
+    const payment = inv?.payments?.find(p => p.id === pendingReceipt.paymentId);
+    if (inv && payment) {
+      openReceipt(payment, inv);
+      setPendingReceipt(null);
+    }
+  }, [invoices, pendingReceipt]);
 
   const getStatusBadge = (status: string, dueDate: string) => {
     const today = new Date().toISOString().split('T')[0];
@@ -232,10 +253,9 @@ export default function StudentFeesPage() {
 
                       {/* Fee Components */}
                       {(inv.components || []).length > 0 && (() => {
-                        const effectivePaid = Number(inv.total_amount) - Number(inv.balance);
-                        const balances = computeComponentBalances(
+                        const balances = allocateComponentBalances(
                           (inv.components || []).map(c => ({ id: c.id, fee_type: c.fee_type, amount: Number(c.amount) })),
-                          effectivePaid
+                          (inv.payments || []).map(p => ({ amount: Number(p.amount), fee_item_id: p.fee_item_id }))
                         );
                         return (
                         <table className="w-full text-sm">
@@ -271,7 +291,7 @@ export default function StudentFeesPage() {
                                         size="sm"
                                         variant="outline"
                                         className="h-7 text-xs px-3 border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground"
-                                        onClick={() => openPayment(inv, payableAmount, c.fee_type)}
+                                        onClick={() => openPayment(inv, payableAmount, c.fee_type, c.id)}
                                       >
                                         Pay
                                       </Button>
@@ -318,7 +338,19 @@ export default function StudentFeesPage() {
         )}
 
         {/* Dialogs */}
-        <RecordPaymentDialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen} invoice={paymentInvoice} prefillAmount={paymentPrefillAmount} prefillLabel={paymentPrefillLabel} />
+        <RecordPaymentDialog
+          open={paymentDialogOpen}
+          onOpenChange={setPaymentDialogOpen}
+          invoice={paymentInvoice}
+          prefillAmount={paymentPrefillAmount}
+          prefillLabel={paymentPrefillLabel}
+          prefillItemId={paymentPrefillItemId}
+          onPaid={(payment) => {
+            if (paymentInvoice && payment.id) {
+              setPendingReceipt({ invoiceId: paymentInvoice.id, paymentId: payment.id });
+            }
+          }}
+        />
         <PaymentReceiptDialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen} payment={receiptPayment} invoice={receiptInvoice} />
         <ApplyDiscountDialog open={discountDialogOpen} onOpenChange={setDiscountDialogOpen} invoice={discountInvoice} />
       </div>
