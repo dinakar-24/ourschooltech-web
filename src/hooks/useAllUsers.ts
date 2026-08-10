@@ -52,6 +52,9 @@ interface UseAllUsersOptions {
   pageSize: number;
   searchQuery: string;
   roleFilter: string | null;
+  // Scope to one school (SchoolUsersPage's Super Admin cross-school view)
+  // instead of the platform-wide default (AllUsersPage/PlatformUsersPage).
+  schoolId?: string;
 }
 
 interface UseAllUsersResult {
@@ -64,7 +67,7 @@ interface UseAllUsersResult {
 }
 
 /** Raw row from GET /api/superadmin/users */
-interface RawUser {
+export interface RawUser {
   id: string;
   email: string;
   fullName: string;
@@ -81,7 +84,7 @@ const EMPTY_COUNTS: RoleCounts = {
   all: 0, super_admin: 0, school_admin: 0, teacher: 0, parent: 0, student: 0, no_role: 0,
 };
 
-function mapUser(raw: RawUser): UserWithRole {
+export function mapUser(raw: RawUser): UserWithRole {
   return {
     id: raw.id,
     email: raw.email,
@@ -96,7 +99,7 @@ function mapUser(raw: RawUser): UserWithRole {
   };
 }
 
-export function useAllUsers({ page, pageSize, searchQuery, roleFilter }: UseAllUsersOptions): UseAllUsersResult {
+export function useAllUsers({ page, pageSize, searchQuery, roleFilter, schoolId }: UseAllUsersOptions): UseAllUsersResult {
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [roleCounts, setRoleCounts] = useState<RoleCounts>(EMPTY_COUNTS);
@@ -113,6 +116,7 @@ export function useAllUsers({ page, pageSize, searchQuery, roleFilter }: UseAllU
           limit: pageSize,
           search: searchQuery || undefined,
           role: roleFilter || undefined,
+          schoolId: schoolId || undefined,
         },
       });
 
@@ -125,7 +129,7 @@ export function useAllUsers({ page, pageSize, searchQuery, roleFilter }: UseAllU
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, searchQuery, roleFilter]);
+  }, [page, pageSize, searchQuery, roleFilter, schoolId]);
 
   useEffect(() => {
     fetchUsers();

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import { Bell, User, Building2, GraduationCap, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -6,7 +7,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
+
+// Migrated from a Supabase Realtime `postgres_changes` subscription on
+// audit_logs to a poll -- Express has no Realtime equivalent, and with no
+// Supabase session the old channel could never fire again (same reasoning
+// as useNotifications.ts, same 60s interval).
+const POLL_INTERVAL_MS = 60_000;
 
 interface AuditLog {
   id: string;
@@ -33,59 +40,26 @@ const actionLabels: Record<string, string> = {
 
 export function NotificationsDropdown() {
   const isMobile = useIsMobile();
-  const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [hasNew, setHasNew] = useState(false);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('audit_logs')
-        .select('id, action, entity_type, entity_id, details, created_at, user_id')
-        .order('created_at', { ascending: false })
-        .limit(20);
+  const { data: logs = [], isLoading: loading } = useQuery({
+    queryKey: ['super-admin-audit-logs'],
+    queryFn: async () => {
+      const { data } = await api.get('/superadmin/audit-logs', { params: { limit: 20 } });
+      return data.logs as AuditLog[];
+    },
+    refetchInterval: POLL_INTERVAL_MS,
+  });
 
-      if (error) throw error;
-      setLogs(data || []);
-
-      const stored = localStorage.getItem('sa_last_seen_notification');
-      setLastSeen(stored);
-
-      if (data && data.length > 0 && (!stored || data[0].created_at > stored)) {
-        setHasNew(true);
-      }
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    const stored = localStorage.getItem('sa_last_seen_notification');
+    setLastSeen(stored);
+    if (logs.length > 0 && (!stored || logs[0].created_at > stored)) {
+      setHasNew(true);
     }
-  }, []);
-
-  useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
-
-  // Realtime subscription
-  useEffect(() => {
-    const channel = supabase
-      .channel('audit-notifications')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'audit_logs' },
-        (payload) => {
-          setLogs((prev) => [payload.new as AuditLog, ...prev.slice(0, 19)]);
-          setHasNew(true);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  }, [logs]);
 
   const handleOpen = (isOpen: boolean) => {
     setOpen(isOpen);

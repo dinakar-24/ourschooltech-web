@@ -14,10 +14,11 @@ import { UserActionsMenu } from '@/components/super-admin/UserActionsMenu';
 import { EditStudentDialog } from '@/components/admin/EditStudentDialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useDebounce } from '@/hooks/useDebounce';
 import { toast } from 'sonner';
-import type { Student } from '@/hooks/useStudents';
+import { mapStudent, type Student, type RawStudent } from '@/hooks/useStudents';
+import { mapUser, type RawUser } from '@/hooks/useAllUsers';
 
 type ViewMode = 'overview' | 'admins' | 'teachers' | 'classes' | 'section-students';
 
@@ -97,18 +98,21 @@ export default function SchoolUsersPage() {
   useEffect(() => {
     if (!schoolId) return;
     (async () => {
-      const { data: school } = await supabase.from('schools').select('name').eq('id', schoolId).single();
-      setSchoolName(school?.name || 'Unknown School');
+      try {
+        const { data: schoolData } = await api.get(`/superadmin/schools/${schoolId}`);
+        setSchoolName(schoolData.school?.name || 'Unknown School');
 
-      const { data: profiles } = await supabase.from('profiles').select('id').eq('school_id', schoolId);
-      if (!profiles?.length) return;
-
-      const userIds = profiles.map(p => p.id);
-      const { data: roles } = await supabase.from('user_roles').select('user_id, role').in('user_id', userIds);
-
-      const roleCounts: Record<string, number> = {};
-      (roles || []).forEach(r => { roleCounts[r.role] = (roleCounts[r.role] || 0) + 1; });
-      setCounts(roleCounts);
+        const [admins, teachers] = await Promise.all([
+          api.get('/superadmin/users', { params: { schoolId, role: 'school_admin', limit: 1 } }),
+          api.get('/superadmin/users', { params: { schoolId, role: 'teacher', limit: 1 } }),
+        ]);
+        setCounts({
+          school_admin: admins.data.pagination.total,
+          teacher: teachers.data.pagination.total,
+        });
+      } catch {
+        toast.error('Failed to load school overview');
+      }
     })();
   }, [schoolId]);
 
@@ -117,27 +121,10 @@ export default function SchoolUsersPage() {
     if (!schoolId) return;
     setLoading(true);
     try {
-      const { data: allProfiles } = await supabase.from('profiles').select('id').eq('school_id', schoolId);
-      if (!allProfiles?.length) { setUsers([]); setLoading(false); return; }
-
-      const allIds = allProfiles.map(p => p.id);
-      const { data: rolesData } = await supabase
-        .from('user_roles').select('user_id')
-        .eq('role', role as 'school_admin' | 'teacher' | 'student' | 'parent' | 'super_admin')
-        .in('user_id', allIds);
-
-      const roleUserIds = (rolesData || []).map(r => r.user_id);
-      if (!roleUserIds.length) { setUsers([]); setLoading(false); return; }
-
-      let query = supabase.from('profiles').select('id, email, full_name, avatar_url').in('id', roleUserIds);
-      if (debouncedSearch) {
-        query = query.or(`full_name.ilike.%${debouncedSearch}%,email.ilike.%${debouncedSearch}%`);
-      }
-
-      const { data: profiles, error } = await query.order('full_name');
-      if (error) throw error;
-
-      setUsers((profiles || []).map(p => ({ ...p, roles: [role] })));
+      const { data } = await api.get('/superadmin/users', {
+        params: { schoolId, role, search: debouncedSearch || undefined, limit: 200 },
+      });
+      setUsers((data.users as RawUser[]).map(mapUser));
     } catch {
       toast.error('Failed to load users');
     } finally {
@@ -150,39 +137,28 @@ export default function SchoolUsersPage() {
     if (!schoolId) return;
     setClassesLoading(true);
     try {
-      const { data: classes } = await supabase
-        .from('classes').select('id, name').eq('school_id', schoolId).order('display_order');
-
-      if (!classes?.length) { setClassesData([]); setClassesLoading(false); return; }
-
-      const classIds = classes.map(c => c.id);
-      const { data: sections } = await supabase
-        .from('sections').select('id, name, class_id, class_teacher_id').in('class_id', classIds).order('name');
-
-      const teacherIds = (sections || []).map(s => s.class_teacher_id).filter(Boolean) as string[];
-      const teacherMap = new Map<string, string>();
-      if (teacherIds.length > 0) {
-        const { data: teachers } = await supabase.from('teachers').select('id, full_name').in('id', teacherIds);
-        (teachers || []).forEach(t => teacherMap.set(t.id, t.full_name));
-      }
-
-      const { data: countData } = await supabase.rpc('get_student_counts_by_class', { p_school_id: schoolId });
-      const countMap = new Map<string, number>();
-      (countData || []).forEach((c: { class_name: string; section: string; count: number }) => {
-        countMap.set(`${c.class_name}|${c.section}`, Number(c.count));
-      });
+      // Counts + class teacher now come straight off the endpoint (real
+      // Section.students/classTeacher relations) -- no separate RPC or
+      // teacher lookup needed.
+      const { data } = await api.get(`/superadmin/schools/${schoolId}/classes`);
+      const classes: Array<{
+        id: string; name: string;
+        sections: Array<{
+          id: string; name: string;
+          classTeacher: { firstName: string; lastName: string } | null;
+          _count: { students: number };
+        }>;
+      }> = data.classes || [];
 
       const result: ClassData[] = classes.map(cls => {
-        const classSections: SectionData[] = (sections || [])
-          .filter(s => s.class_id === cls.id)
-          .map(s => ({
-            id: s.id,
-            name: s.name,
-            classId: cls.id,
-            className: cls.name,
-            studentCount: countMap.get(`${cls.name}|${s.name}`) || 0,
-            classTeacher: s.class_teacher_id ? teacherMap.get(s.class_teacher_id) : undefined,
-          }));
+        const classSections: SectionData[] = cls.sections.map(s => ({
+          id: s.id,
+          name: s.name,
+          classId: cls.id,
+          className: cls.name,
+          studentCount: s._count.students,
+          classTeacher: s.classTeacher ? `${s.classTeacher.firstName} ${s.classTeacher.lastName}`.trim() : undefined,
+        }));
         return {
           id: cls.id,
           name: cls.name,
@@ -204,37 +180,33 @@ export default function SchoolUsersPage() {
     if (!schoolId) return;
     setStudentsLoading(true);
     try {
-      let query = supabase
-        .from('students')
-        .select('id, full_name, admission_number, roll_number, avatar_url, user_id, gender, date_of_birth, parent_name, parent_email, parent_phone, address, status, class_name, section, school_id, academic_year_id, created_at, updated_at')
-        .eq('school_id', schoolId)
-        .eq('class_name', section.className)
-        .eq('section', section.name)
-        .eq('status', 'active')
-        .order('roll_number', { ascending: true, nullsFirst: false });
+      // Real sectionId FK now -- no more class_name/section string matching.
+      // Parents + the student's own login email come back on the same row,
+      // so no separate profiles lookup is needed either.
+      const { data } = await api.get(`/superadmin/schools/${schoolId}/students`, {
+        params: { sectionId: section.id, search: debouncedSearch || undefined },
+      });
 
-      if (debouncedSearch) {
-        query = query.or(`full_name.ilike.%${debouncedSearch}%,admission_number.ilike.%${debouncedSearch}%,parent_name.ilike.%${debouncedSearch}%,parent_phone.ilike.%${debouncedSearch}%`);
-      }
+      const rows: Array<RawStudent & {
+        user?: { email: string } | null;
+        parents?: Array<{ firstName: string; lastName: string; phone: string | null; user?: { email: string } | null }>;
+      }> = data.students || [];
 
-      const { data, error } = await query;
-      if (error) throw error;
-
-      // Fetch emails from profiles for students with user_id
-      const userIds = (data || []).map(s => s.user_id).filter(Boolean) as string[];
-      const emailMap = new Map<string, string>();
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, email')
-          .in('id', userIds);
-        (profiles || []).forEach(p => emailMap.set(p.id, p.email));
-      }
-
-      setSectionStudents((data || []).map(s => ({
-        ...s,
-        email: s.user_id ? (emailMap.get(s.user_id) || null) : null,
-      })));
+      setSectionStudents(rows.map(s => {
+        const parent = s.parents && s.parents.length > 0 ? s.parents[0] : null;
+        return {
+          id: s.id,
+          full_name: `${s.firstName} ${s.lastName}`.trim(),
+          admission_number: s.admissionNo,
+          roll_number: s.rollNo ? Number(s.rollNo) || null : null,
+          avatar_url: s.photo ?? null,
+          user_id: s.userId,
+          email: s.user?.email ?? null,
+          parent_name: parent ? `${parent.firstName} ${parent.lastName}`.trim() : null,
+          parent_email: parent?.user?.email ?? null,
+          parent_phone: parent?.phone ?? null,
+        };
+      }));
     } catch {
       toast.error('Failed to load students');
     } finally {
@@ -244,16 +216,15 @@ export default function SchoolUsersPage() {
 
   // Open edit student dialog with full data
   const openEditStudent = useCallback(async (studentId: string) => {
-    const { data } = await supabase
-      .from('students')
-      .select('*')
-      .eq('id', studentId)
-      .single();
-    if (data) {
-      setEditingStudent(data as Student);
+    if (!schoolId) return;
+    try {
+      const { data } = await api.get(`/superadmin/schools/${schoolId}/students/${studentId}`);
+      setEditingStudent(mapStudent(data.student as RawStudent));
       setEditStudentOpen(true);
+    } catch {
+      toast.error('Failed to load student');
     }
-  }, []);
+  }, [schoolId]);
 
   // Load data when view changes
   useEffect(() => {
