@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-// Still used by useErrorLogs/useLoginAttempts below -- both stay on
-// Supabase for now, deliberately deferred (see the memory note on this
-// batch: neither error_logs nor login_attempts has a real write side yet,
-// so porting the read side alone would just show an empty page).
+// Still used by useLoginAttempts below -- login_attempts has no real write
+// side anywhere yet (see the memory note on this batch), so porting just
+// the read side would show an empty page. error_logs is migrated -- see
+// useErrorLogs.
 import { supabase } from '@/integrations/supabase/client';
 import { SuperAdminLayout } from '@/components/layout/SuperAdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,18 +51,16 @@ type JobStats = {
 
 // --- Hooks ---
 
+// Migrated to /api/superadmin/system-health/error-logs -- reads the same
+// ErrorLog model both logger.ts's client-error POSTs and the backend's own
+// global error handler write to. Same 24h/desc/200 shape the old direct
+// Supabase query used.
 function useErrorLogs() {
   return useQuery({
     queryKey: ['error-logs-health'],
     queryFn: async () => {
-      const since = subHours(new Date(), 24).toISOString();
-      const { data, error } = await (supabase.from('error_logs' as any) as any)
-        .select('*')
-        .gte('created_at', since)
-        .order('created_at', { ascending: false })
-        .limit(200);
-      if (error) throw error;
-      return (data ?? []) as ErrorLog[];
+      const { data } = await api.get('/superadmin/system-health/error-logs');
+      return (data.logs ?? []) as ErrorLog[];
     },
     staleTime: 60_000,
   });

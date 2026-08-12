@@ -5,7 +5,7 @@ import { useSessionTimeout } from '@/hooks/useSessionTimeout';
 import { SessionWarningBanner } from '@/components/layout/SessionWarningBanner';
 import { useTenant } from '@/contexts/TenantContext';
 import { toast } from 'sonner';
-import { logError, updateLoggerContext } from '@/lib/logger';
+import { logError } from '@/lib/logger';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Migrated from Supabase Auth to the Express/JWT backend.
@@ -178,7 +178,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setSchool(null);
     clearAuthCache();
-    updateLoggerContext(undefined, undefined);
   }, []);
 
   // Cross-tenant validation
@@ -203,7 +202,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(userData);
     setSchool(schoolData);
     cacheAuthData(userData, schoolData);
-    updateLoggerContext(userData.id, userData.schoolId);
     return userData;
   }, [validateTenant]);
 

@@ -1,32 +1,27 @@
 /**
  * Centralized client-side error logger.
  *
- * Writes to the `error_logs` table via safe_log_client_error RPC.
- * Batches logs (debounced 2s) to avoid spamming the DB on cascading failures.
+ * Writes to the `error_logs` table via POST /api/logs/client-error.
+ * Batches logs (debounced 2s) to avoid spamming the DB on cascading failures
+ * -- flush() sends the whole pending batch in a single request rather than
+ * one request per entry.
  * Never exposes sensitive data in logs.
  *
- * ⚠️ NOT MIGRATED — BLOCKED, and currently a silent no-op.
- *
- * Needs: POST /api/logs/client-error  (does not exist)
- *   body: { errorType, message, context, severity }
- *
- * The Express backend has no client-error sink. `AuditLog` exists but is a
- * server-side audit trail with a different shape and purpose — not a
- * substitute. Since login moved off Supabase there is no session, so the RPC
- * below is rejected and the `catch {}` swallows it: every logError() call in
- * the app (AuthContext, lib/api.ts interceptors) currently goes nowhere.
- * Behaviour is unchanged by the migration; it was already failing silently.
+ * The endpoint deliberately requires no auth (errors can happen pre-login),
+ * but `api`'s request interceptor attaches the current access token when
+ * one exists, so the backend can still attribute logs to a real user/school
+ * when the caller happens to be logged in -- see logs.controller.js.
  */
 
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 
 export type ErrorType = 'edge_function' | 'rpc' | 'auth' | 'frontend_crash' | 'network' | 'mutation';
 export type Severity = 'warning' | 'error' | 'critical';
 
 interface LogEntry {
-  error_type: ErrorType;
-  error_message: string;
-  error_context: Record<string, any>;
+  errorType: ErrorType;
+  message: string;
+  context: Record<string, any>;
   severity: Severity;
 }
 
@@ -40,7 +35,7 @@ const MAX_BATCH_SIZE = 20;
 function sanitizeContext(ctx: Record<string, any>): Record<string, any> {
   const sanitized: Record<string, any> = {};
   const SENSITIVE_KEYS = new Set(['password', 'token', 'secret', 'authorization', 'cookie', 'otp', 'api_key']);
-  
+
   for (const [key, value] of Object.entries(ctx)) {
     if (SENSITIVE_KEYS.has(key.toLowerCase())) {
       sanitized[key] = '[REDACTED]';
@@ -57,17 +52,11 @@ async function flush() {
   if (pendingLogs.length === 0) return;
   const batch = pendingLogs.splice(0, MAX_BATCH_SIZE);
 
-  for (const entry of batch) {
-    try {
-      await supabase.rpc('safe_log_client_error', {
-        _error_type: entry.error_type.slice(0, 100),
-        _error_message: entry.error_message.slice(0, 1000),
-        _severity: entry.severity === 'critical' ? 'error' : entry.severity,
-        _context: entry.error_context,
-      });
-    } catch {
-      // Logging should never throw -- silently discard on failure
-    }
+  try {
+    await api.post('/logs/client-error', { logs: batch });
+  } catch {
+    // Logging should never throw -- silently discard on failure. Must not
+    // call logError() here: that would re-enter this exact flow.
   }
 }
 
@@ -91,9 +80,9 @@ export function logError(
   severity: Severity = 'error',
 ) {
   const entry: LogEntry = {
-    error_type: type,
-    error_message: message.slice(0, 1000),
-    error_context: sanitizeContext({
+    errorType: type,
+    message: message.slice(0, 1000),
+    context: sanitizeContext({
       ...context,
       route: typeof window !== 'undefined' ? window.location.pathname : undefined,
     }),
@@ -113,12 +102,4 @@ export function logError(
   } else {
     scheduleFlush();
   }
-}
-
-/**
- * Update cached auth context (call from AuthContext when user changes).
- * Note: user_id and school_id are now set automatically by the RPC using auth.uid()
- */
-export function updateLoggerContext(_userId?: string, _schoolId?: string) {
-  // No-op: the safe_log_client_error RPC automatically uses auth.uid()
 }
