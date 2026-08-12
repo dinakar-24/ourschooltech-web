@@ -15,7 +15,8 @@ import { UserPlus, Building2, User, Mail, Lock, Eye, EyeOff } from 'lucide-react
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
 import { toast } from 'sonner';
-import { useCreateSchoolUser } from '@/hooks/useCreateSchoolUser';
+import { api } from '@/lib/api';
+import { friendlyErrorMessage } from '@/lib/error-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { validatePassword } from '@/lib/password-validation';
 
@@ -173,7 +174,7 @@ export function CreateSchoolAdminDialog({ schools, onSuccess }: CreateSchoolAdmi
     email: '', password: '', fullName: '', schoolId: '', phone: '',
   });
 
-  const { createUser, isCreating } = useCreateSchoolUser();
+  const [isCreating, setIsCreating] = useState(false);
 
   const resetForm = () => setFormData({ email: '', password: '', fullName: '', schoolId: '', phone: '' });
 
@@ -188,19 +189,27 @@ export function CreateSchoolAdminDialog({ schools, onSuccess }: CreateSchoolAdmi
     const passwordError = validatePassword(formData.password);
     if (passwordError) { toast.error(passwordError); return; }
 
-    const success = await createUser({
-      email: formData.email,
-      password: formData.password,
-      full_name: formData.fullName,
-      role: 'school_admin',
-      school_id: formData.schoolId,
-      phone: formData.phone || undefined,
-    });
+    const [firstName, ...rest] = formData.fullName.trim().split(' ');
+    const lastName = rest.join(' ') || firstName;
 
-    if (success) {
+    setIsCreating(true);
+    try {
+      await api.post('/superadmin/school-admins', {
+        schoolId: formData.schoolId,
+        firstName,
+        lastName,
+        email: formData.email,
+        phone: formData.phone || undefined,
+        password: formData.password,
+      });
+      toast.success('School admin account created successfully');
       setIsOpen(false);
       resetForm();
       onSuccess();
+    } catch (error: any) {
+      toast.error(friendlyErrorMessage(error?.response?.data?.error || 'Failed to create school admin'));
+    } finally {
+      setIsCreating(false);
     }
   };
 

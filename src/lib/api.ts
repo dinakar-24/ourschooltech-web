@@ -5,10 +5,13 @@
  *     backend. JWT request interceptor + refresh-on-401. Use this for all
  *     new/migrated code.
  *  2. `invokeEdgeFunction` — the original Supabase Edge Function wrapper.
- *     Still used by 8 not-yet-migrated modules (useManageUser,
+ *     Only StudentsPage.tsx's handleDeleteAll ('delete-all-students') still
+ *     calls it -- blocked pending a decision on cascade behavior (deleting
+ *     Payment rows), see the memory note on this batch. useManageUser,
  *     useCreateSchoolUser, useTeachers, useSchools, useCashfree,
- *     ForgotPasswordDialog, SuperAdminOTPLogin, StudentsPage). Do not add
- *     new callers; delete it once those are migrated.
+ *     ForgotPasswordDialog and SuperAdminOTPLogin are already migrated;
+ *     the previous version of this comment listing all 8 was stale. Do not
+ *     add new callers; delete this once delete-all-students is resolved.
  */
 
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';

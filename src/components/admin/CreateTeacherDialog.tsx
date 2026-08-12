@@ -12,7 +12,8 @@ import {
 import { User, Mail, Lock, Hash, Loader2, Eye, EyeOff } from 'lucide-react';
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
-import { useCreateSchoolUser } from '@/hooks/useCreateSchoolUser';
+import { api } from '@/lib/api';
+import { friendlyErrorMessage } from '@/lib/error-utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
@@ -157,7 +158,7 @@ function TeacherFormContent({ formData, onChange, onSubmit, isCreating, onClose 
 
 export const CreateTeacherDialog = memo(function CreateTeacherDialog({ open, onOpenChange, onSuccess }: CreateTeacherDialogProps) {
   const [formData, setFormData] = useState(initialFormData);
-  const { createUser, isCreating } = useCreateSchoolUser();
+  const [isCreating, setIsCreating] = useState(false);
   const { user } = useAuth();
   const isMobile = useIsMobile();
 
@@ -168,20 +169,31 @@ export const CreateTeacherDialog = memo(function CreateTeacherDialog({ open, onO
     if (!user?.schoolId) return;
     const failedRule = passwordRules.find(r => !r.test(formData.password));
     if (failedRule) { toast.error(`Password: ${failedRule.label} required`); return; }
-    const success = await createUser({
-      email: formData.email,
-      password: formData.password,
-      full_name: formData.full_name,
-      phone: formData.phone || undefined,
-      role: 'teacher',
-      school_id: user.schoolId,
-      employee_id: formData.employee_id || undefined,
-      subjects: formData.subject ? [formData.subject] : undefined,
-      avatar_url: formData.avatar_url || undefined,
-    });
 
-    if (success) { onOpenChange(false); onSuccess(); }
-  }, [formData, user?.schoolId, createUser, onOpenChange, onSuccess]);
+    const [firstName, ...rest] = formData.full_name.trim().split(' ');
+    const lastName = rest.join(' ') || firstName;
+
+    setIsCreating(true);
+    try {
+      await api.post('/school/teachers', {
+        firstName,
+        lastName,
+        email: formData.email,
+        password: formData.password,
+        phone: formData.phone || undefined,
+        employeeId: formData.employee_id || undefined,
+        subjects: formData.subject ? [formData.subject] : undefined,
+        photo: formData.avatar_url || undefined,
+      });
+      toast.success('Teacher account created successfully');
+      onOpenChange(false);
+      onSuccess();
+    } catch (error: any) {
+      toast.error(friendlyErrorMessage(error?.response?.data?.error || 'Failed to create teacher'));
+    } finally {
+      setIsCreating(false);
+    }
+  }, [formData, user?.schoolId, onOpenChange, onSuccess]);
 
   const handleFieldChange = useCallback((field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
