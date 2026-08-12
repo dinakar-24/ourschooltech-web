@@ -16,11 +16,6 @@ import { SchoolCard } from '@/components/super-admin/schools/SchoolCard';
 import { usePagination } from '@/hooks/usePagination';
 import { PaginationControls } from '@/components/ui/pagination-controls';
 import { useImpersonation } from '@/contexts/ImpersonationContext';
-// supabase is still needed for handlePwaSettings below: the PWA branding
-// fields it reads (secondary_color, app_display_name, splash_screen_image_url)
-// have no columns on the Prisma School model, so that dialog can't migrate
-// until a schema change adds them.
-import { supabase } from '@/integrations/supabase/client';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import {
@@ -108,15 +103,25 @@ export default function SchoolsPage() {
   }, []);
 
   const handlePwaSettings = useCallback(async (school: School) => {
-    // Fetch full school data including PWA fields
-    const { data } = await supabase
-      .from('schools')
-      .select('id, name, code, logo, primary_color, accent_color, secondary_color, background_color, app_display_name, app_short_name, splash_screen_image_url')
-      .eq('id', school.id)
-      .single();
-    if (data) {
-      setPwaSchool(data);
+    try {
+      const { data } = await api.get(`/superadmin/schools/${school.id}`);
+      const s = data.school;
+      setPwaSchool({
+        id: s.id,
+        name: s.name,
+        code: s.schoolCode,
+        logo: s.logo,
+        primary_color: s.primaryColor,
+        accent_color: s.accentColor,
+        secondary_color: s.secondaryColor,
+        background_color: s.backgroundColor,
+        app_display_name: s.appDisplayName,
+        app_short_name: s.appShortName,
+        splash_screen_image_url: s.splashScreenImageUrl,
+      });
       setPwaDialogOpen(true);
+    } catch {
+      toast.error('Failed to load PWA settings');
     }
   }, []);
 
