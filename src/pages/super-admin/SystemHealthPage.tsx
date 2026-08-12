@@ -1,11 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-// Still used by useLoginAttempts below -- login_attempts has no real write
-// side anywhere yet (see the memory note on this batch), so porting just
-// the read side would show an empty page. error_logs is migrated -- see
-// useErrorLogs.
-import { supabase } from '@/integrations/supabase/client';
 import { SuperAdminLayout } from '@/components/layout/SuperAdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -66,17 +61,16 @@ function useErrorLogs() {
   });
 }
 
+// Migrated to /api/superadmin/system-health/login-attempts -- reads the
+// LoginAttempt model auth.controller.js writes to alongside (not instead
+// of) its in-memory lockout Map. Bare count, matching the old direct
+// Supabase query's exact shape (head:true count-only, never a row list).
 function useLoginAttempts() {
   return useQuery({
     queryKey: ['login-attempts-health'],
     queryFn: async () => {
-      const since = subHours(new Date(), 24).toISOString();
-      const { count, error } = await supabase
-        .from('login_attempts')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', since);
-      if (error) throw error;
-      return count ?? 0;
+      const { data } = await api.get('/superadmin/system-health/login-attempts');
+      return (data.count ?? 0) as number;
     },
     staleTime: 60_000,
   });
