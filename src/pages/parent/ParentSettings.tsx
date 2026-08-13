@@ -22,7 +22,7 @@ const LANGUAGES = [
 
 export default function ParentSettings() {
   const { t, i18n } = useTranslation();
-  const { isSubscribed, isSupported, subscribe, permission } = usePushNotifications();
+  const { isSubscribed, isSupported, subscribe, unsubscribe, permission } = usePushNotifications();
 
   const handleNotificationToggle = async (checked: boolean) => {
     if (checked) {
@@ -37,7 +37,8 @@ export default function ParentSettings() {
         toast.error(t('settingsPage.notificationsBlocked'));
       }
     } else {
-      toast.info(t('settingsPage.disableNotifications'));
+      const success = await unsubscribe();
+      if (success) toast.success(t('settingsPage.notificationsDisabled'));
     }
   };
 

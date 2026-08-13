@@ -120,6 +120,7 @@ const kn = {
     language: 'ಭಾಷೆ',
     appVersion: 'ಆ್ಯಪ್ ಆವೃತ್ತಿ',
     notificationsEnabled: 'ಪುಶ್ ನೋಟಿಫಿಕೇಶನ್‌ಗಳು ಆನ್!',
+    notificationsDisabled: 'ಪುಶ್ ನೋಟಿಫಿಕೇಶನ್‌ಗಳು ಆಫ್!',
     notificationsNotSupported: 'ಈ ಸಾಧನದಲ್ಲಿ ಪುಶ್ ನೋಟಿಫಿಕೇಶನ್‌ಗಳು ಬೆಂಬಲಿತವಲ್ಲ',
     notificationsBlocked: 'ನೋಟಿಫಿಕೇಶನ್‌ಗಳು ನಿರ್ಬಂಧಿಸಲಾಗಿದೆ. ದಯವಿಟ್ಟು ಬ್ರೌಸರ್ ಸೆಟ್ಟಿಂಗ್‌ಗಳಲ್ಲಿ ಸಕ್ರಿಯಗೊಳಿಸಿ.',
     disableNotifications: 'ನೋಟಿಫಿಕೇಶನ್‌ಗಳು ಆಫ್ ಮಾಡಲು ಬ್ರೌಸರ್ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು ನವೀಕರಿಸಿ.',

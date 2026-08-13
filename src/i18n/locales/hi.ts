@@ -153,6 +153,7 @@ const hi = {
     language: 'भाषा',
     appVersion: 'ऐप संस्करण',
     notificationsEnabled: 'पुश नोटिफिकेशन चालू!',
+    notificationsDisabled: 'पुश नोटिफिकेशन बंद!',
     notificationsNotSupported: 'इस डिवाइस पर पुश नोटिफिकेशन समर्थित नहीं हैं',
     notificationsBlocked: 'नोटिफिकेशन ब्लॉक हैं। कृपया अपने ब्राउज़र सेटिंग्स में सक्षम करें।',
     disableNotifications: 'नोटिफिकेशन बंद करने के लिए ब्राउज़र सेटिंग्स अपडेट करें।',

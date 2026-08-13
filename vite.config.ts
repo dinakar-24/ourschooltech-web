@@ -27,75 +27,21 @@ export default defineConfig(() => {
         },
       },
       VitePWA({
+        // injectManifest instead of the old generateSW -- generateSW
+        // auto-writes the whole worker from this config and has no hook
+        // for a custom `push` event listener. src/sw.ts is hand-written
+        // (imports workbox-* directly) and replicates every runtime-
+        // caching rule this config used to express declaratively; see its
+        // own header comment. registerType: autoUpdate still applies to
+        // how the client registers/updates this worker.
+        strategies: "injectManifest",
+        srcDir: "src",
+        filename: "sw.ts",
+        injectManifest: {
+          globPatterns: ["**/*.{js,css,html,ico,png,svg,webp}"],
+        },
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico", "favicon.png", "images/ost-logo.png"],
-        workbox: {
-          navigateFallbackDenylist: [/^\/~oauth/],
-          cleanupOutdatedCaches: true,
-          clientsClaim: true,
-          skipWaiting: true,
-          runtimeCaching: [
-            {
-              // Always try the network first for navigation (the HTML
-              // shell) so a fixed deploy is visible on the very next load
-              // instead of getting stuck behind a service worker serving a
-              // precached shell from before the fix -- the shell's own
-              // cache-busting script can't rescue a load it never got to
-              // run for. Falls back to the cached shell only when
-              // genuinely offline. Must stay first in this list: Workbox
-              // checks routes in registration order.
-              urlPattern: ({ request }) => request.mode === "navigate",
-              handler: "NetworkFirst",
-              options: {
-                cacheName: "html-shell",
-                networkTimeoutSeconds: 3,
-              },
-            },
-            {
-              urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*/i,
-              handler: "NetworkFirst",
-              options: {
-                cacheName: "supabase-api",
-                expiration: { maxEntries: 50, maxAgeSeconds: 300 },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/.*\.supabase\.co\/storage\/.*/i,
-              handler: "CacheFirst",
-              options: {
-                cacheName: "supabase-storage",
-                expiration: { maxEntries: 300, maxAgeSeconds: 90 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
-            {
-              // Tenant logos & branded assets (any image, any host) — instant on return visits
-              urlPattern: ({ request }) => request.destination === "image",
-              handler: "CacheFirst",
-              options: {
-                cacheName: "branded-images",
-                expiration: { maxEntries: 200, maxAgeSeconds: 90 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-              handler: "StaleWhileRevalidate",
-              options: {
-                cacheName: "google-fonts-stylesheets",
-                expiration: { maxEntries: 5, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              },
-            },
-            {
-              urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-              handler: "CacheFirst",
-              options: {
-                cacheName: "google-fonts-webfonts",
-                expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              },
-            },
-          ],
-        },
         manifest: {
           name: "Our School Tech",
           short_name: "OurSchool",

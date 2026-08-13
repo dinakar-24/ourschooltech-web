@@ -120,6 +120,7 @@ const bn = {
     language: 'ভাষা',
     appVersion: 'অ্যাপ সংস্করণ',
     notificationsEnabled: 'পুশ নোটিফিকেশন চালু!',
+    notificationsDisabled: 'পুশ নোটিফিকেশন বন্ধ!',
     notificationsNotSupported: 'এই ডিভাইসে পুশ নোটিফিকেশন সমর্থিত নয়',
     notificationsBlocked: 'নোটিফিকেশন ব্লক করা আছে। ব্রাউজার সেটিংসে সক্রিয় করুন।',
     disableNotifications: 'নোটিফিকেশন বন্ধ করতে ব্রাউজার সেটিংস আপডেট করুন।',

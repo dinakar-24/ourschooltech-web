@@ -120,6 +120,7 @@ const ta = {
     language: 'மொழி',
     appVersion: 'செயலி பதிப்பு',
     notificationsEnabled: 'புஷ் அறிவிப்புகள் இயக்கப்பட்டன!',
+    notificationsDisabled: 'புஷ் அறிவிப்புகள் முடக்கப்பட்டன!',
     notificationsNotSupported: 'இந்த சாதனத்தில் புஷ் அறிவிப்புகள் ஆதரிக்கப்படவில்லை',
     notificationsBlocked: 'அறிவிப்புகள் தடுக்கப்பட்டன. உலாவி அமைப்புகளில் இயக்கவும்.',
     disableNotifications: 'அறிவிப்புகளை நிறுத்த உலாவி அமைப்புகளைப் புதுப்பிக்கவும்.',

@@ -120,6 +120,7 @@ const te = {
     language: 'భాష',
     appVersion: 'యాప్ వెర్షన్',
     notificationsEnabled: 'పుష్ నోటిఫికేషన్‌లు ఆన్!',
+    notificationsDisabled: 'పుష్ నోటిఫికేషన్‌లు ఆఫ్!',
     notificationsNotSupported: 'ఈ పరికరంలో పుష్ నోటిఫికేషన్‌లు సపోర్ట్ కావు',
     notificationsBlocked: 'నోటిఫికేషన్‌లు బ్లాక్ చేయబడ్డాయి. దయచేసి బ్రౌజర్ సెట్టింగ్‌లలో ఎనేబుల్ చేయండి.',
     disableNotifications: 'నోటిఫికేషన్‌లు ఆఫ్ చేయడానికి బ్రౌజర్ సెట్టింగ్‌లు అప్‌డేట్ చేయండి.',

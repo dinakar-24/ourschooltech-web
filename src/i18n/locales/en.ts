@@ -169,6 +169,7 @@ const en = {
     language: 'Language',
     appVersion: 'App Version',
     notificationsEnabled: 'Push notifications enabled!',
+    notificationsDisabled: 'Push notifications disabled',
     notificationsNotSupported: 'Push notifications are not supported on this device',
     notificationsBlocked: 'Notifications blocked. Please enable them in your browser settings.',
     disableNotifications: 'To disable notifications, update your browser notification settings.',

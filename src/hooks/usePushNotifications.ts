@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-
-// VAPID public key - safe to be in frontend code (publishable)
-const VAPID_PUBLIC_KEY = 'BHKzZGbgn4i6IrcE8ayRzwAb8KKaJgovLxKrWCg4M-W5-YnHXQsfDtpm-Hn5TsLl-pzi7Ep1VzcpFY9PYIHSOFw';
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
@@ -31,15 +28,15 @@ export function usePushNotifications() {
   // Check existing subscription on mount
   useEffect(() => {
     if (!isSupported || !user?.id) return;
-    
-    navigator.serviceWorker.ready.then(async (registration: any) => {
+
+    navigator.serviceWorker.ready.then(async (registration) => {
       const subscription = await registration.pushManager?.getSubscription();
       setIsSubscribed(!!subscription);
     }).catch(() => {});
   }, [isSupported, user?.id]);
 
   const subscribe = useCallback(async () => {
-    if (!isSupported || !user?.id || !VAPID_PUBLIC_KEY) return false;
+    if (!isSupported || !user?.id) return false;
 
     try {
       const result = await Notification.requestPermission();
@@ -47,39 +44,33 @@ export function usePushNotifications() {
 
       if (result !== 'granted') return false;
 
-      const registration: any = await navigator.serviceWorker.ready;
-      
-      // Check for existing subscription
+      // Fetched from the backend rather than hardcoded -- lets the key
+      // rotate without a frontend deploy, and the old hardcoded key was
+      // Supabase-project-specific (no matching private key exists for it
+      // anymore).
+      const { data: keyData } = await api.get('/push/vapid-public-key');
+      const vapidPublicKey = keyData.publicKey as string;
+
+      const registration = await navigator.serviceWorker.ready;
+
       let subscription = await registration.pushManager.getSubscription();
-      
+
       if (!subscription) {
         subscription = await registration.pushManager.subscribe({
           userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
         });
       }
 
       if (!subscription) return false;
 
       const subJson = subscription.toJSON();
-      
-      // Save to database
-      const { error } = await supabase.from('push_subscriptions').upsert(
-        {
-          user_id: user.id,
-          school_id: user.schoolId || null,
-          endpoint: subJson.endpoint!,
-          p256dh: subJson.keys!.p256dh!,
-          auth: subJson.keys!.auth!,
-          device_info: navigator.userAgent.slice(0, 200),
-        },
-        { onConflict: 'user_id,endpoint' }
-      );
 
-      if (error) {
-        console.error('Failed to save push subscription:', error);
-        return false;
-      }
+      await api.post('/push/subscribe', {
+        endpoint: subJson.endpoint,
+        keys: { p256dh: subJson.keys?.p256dh, auth: subJson.keys?.auth },
+        deviceInfo: navigator.userAgent.slice(0, 200),
+      });
 
       setIsSubscribed(true);
       return true;
@@ -89,5 +80,29 @@ export function usePushNotifications() {
     }
   }, [isSupported, user]);
 
-  return { permission, isSubscribed, isSupported, subscribe };
+  const unsubscribe = useCallback(async () => {
+    if (!isSupported) return false;
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+
+      if (subscription) {
+        const endpoint = subscription.endpoint;
+        await subscription.unsubscribe();
+        // Best-effort -- the browser-side unsubscribe above is what
+        // actually stops delivery; if this call fails the row is still
+        // cleaned up the next time the push worker gets a 410/404 for it.
+        await api.delete('/push/subscribe', { data: { endpoint } }).catch(() => {});
+      }
+
+      setIsSubscribed(false);
+      return true;
+    } catch (err) {
+      console.error('Push unsubscribe failed:', err);
+      return false;
+    }
+  }, [isSupported]);
+
+  return { permission, isSubscribed, isSupported, subscribe, unsubscribe };
 }

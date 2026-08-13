@@ -120,6 +120,7 @@ const ml = {
     language: 'ഭാഷ',
     appVersion: 'ആപ്പ് പതിപ്പ്',
     notificationsEnabled: 'പുഷ് നോട്ടിഫിക്കേഷനുകൾ ഓൺ!',
+    notificationsDisabled: 'പുഷ് നോട്ടിഫിക്കേഷനുകൾ ഓഫ്!',
     notificationsNotSupported: 'ഈ ഉപകരണത്തിൽ പുഷ് നോട്ടിഫിക്കേഷനുകൾ പിന്തുണയ്ക്കുന്നില്ല',
     notificationsBlocked: 'നോട്ടിഫിക്കേഷനുകൾ ബ്ലോക്ക് ചെയ്തിരിക്കുന്നു. ബ്രൗസർ സെറ്റിങ്ങ്സിൽ എനേബിൾ ചെയ്യുക.',
     disableNotifications: 'നോട്ടിഫിക്കേഷനുകൾ ഓഫ് ചെയ്യാൻ ബ്രൗസർ സെറ്റിങ്ങ്സ് അപ്‌ഡേറ്റ് ചെയ്യുക.',

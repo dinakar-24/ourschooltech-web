@@ -120,6 +120,7 @@ const mr = {
     language: 'भाषा',
     appVersion: 'ॲप आवृत्ती',
     notificationsEnabled: 'पुश नोटिफिकेशन चालू!',
+    notificationsDisabled: 'पुश नोटिफिकेशन बंद!',
     notificationsNotSupported: 'या डिव्हाइसवर पुश नोटिफिकेशन समर्थित नाहीत',
     notificationsBlocked: 'नोटिफिकेशन ब्लॉक आहेत. कृपया ब्राउझर सेटिंग्जमध्ये सक्षम करा.',
     disableNotifications: 'नोटिफिकेशन बंद करण्यासाठी ब्राउझर सेटिंग्ज अद्ययावत करा.',
