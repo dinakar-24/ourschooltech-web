@@ -26,10 +26,12 @@ import {
   Eye,
   EyeOff,
   ShieldAlert,
+  Building2,
 } from 'lucide-react';
 import { useManageUser } from '@/hooks/useManageUser';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { ManageSchoolAccessDialog } from './ManageSchoolAccessDialog';
 
 interface UserActionsMenuProps {
   userId: string;
@@ -58,6 +60,7 @@ export function UserActionsMenu({
 }: UserActionsMenuProps) {
   const { manageUser, isProcessing } = useManageUser();
   const [editOpen, setEditOpen] = useState(false);
+  const [accessOpen, setAccessOpen] = useState(false);
 
   // Password confirmation state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -169,6 +172,12 @@ export function UserActionsMenu({
             <KeyRound className="w-4 h-4 mr-2" />
             Reset Password
           </DropdownMenuItem>
+          {!isSelf && (
+            <DropdownMenuItem onClick={() => setAccessOpen(true)}>
+              <Building2 className="w-4 h-4 mr-2" />
+              Manage School Access
+            </DropdownMenuItem>
+          )}
           <DropdownMenuSeparator />
           {!isSelf && (
             <DropdownMenuItem
@@ -269,6 +278,13 @@ export function UserActionsMenu({
           </form>
         </DialogContent>
       </Dialog>
+
+      <ManageSchoolAccessDialog
+        open={accessOpen}
+        onOpenChange={setAccessOpen}
+        userId={userId}
+        userName={userName}
+      />
     </>
   );
 }
