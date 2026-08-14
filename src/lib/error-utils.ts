@@ -1,8 +1,6 @@
 /**
  * Centralized error handling utilities.
  *
- * – extractEdgeFunctionError()  → safely pulls a human-readable string from
- *   supabase.functions.invoke() responses (handles ReadableStream, context, etc.)
  * – friendlyErrorMessage()      → maps raw backend strings to user-friendly text
  * – validateEmail / validatePassword / validateOTP  → client-side validation
  */
@@ -47,67 +45,6 @@ export function friendlyErrorMessage(raw: unknown): string {
   if (str.length < 200 && !str.includes('\n') && !str.includes('at ')) {
     return str;
   }
-
-  return FALLBACK_MESSAGE;
-}
-
-// ── Edge function error extraction ─────────────────────────────────────────────
-
-/**
- * Safely extract a user-friendly error string from a supabase.functions.invoke()
- * response. Returns `null` when there is no error.
- *
- * Handles:
- * - FunctionsHttpError with `.context` (Response body)
- * - ReadableStream bodies that would otherwise show as [object ReadableStream]
- * - Plain `.message` strings
- * - Application-level `data.error` / `data.success === false`
- */
-export async function extractEdgeFunctionError(
-  response: { data: any; error: any },
-): Promise<string | null> {
-  const { data, error } = response;
-
-  // No error at all
-  if (!error && data?.success !== false) return null;
-
-  // 1. Try to read context body (FunctionsHttpError)
-  if (error?.context) {
-    try {
-      const body =
-        typeof error.context.json === 'function'
-          ? await error.context.json()
-          : null;
-      if (body?.error) return friendlyErrorMessage(body.error);
-      if (body?.message) return friendlyErrorMessage(body.message);
-    } catch {
-      /* context isn't JSON — fall through */
-    }
-
-    // Try text() as fallback for non-JSON responses
-    try {
-      if (typeof error.context.text === 'function') {
-        const text = await error.context.text();
-        if (text && !text.startsWith('[object')) {
-          return friendlyErrorMessage(text);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  // 2. Plain string message (but skip [object …] leaks)
-  if (
-    error?.message &&
-    typeof error.message === 'string' &&
-    !error.message.includes('[object')
-  ) {
-    return friendlyErrorMessage(error.message);
-  }
-
-  // 3. Application-level error in data
-  if (data?.error) return friendlyErrorMessage(data.error);
 
   return FALLBACK_MESSAGE;
 }

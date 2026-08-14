@@ -47,15 +47,16 @@ import {
   X,
 } from 'lucide-react';
 import { uploadToR2 } from '@/lib/uploads';
-import { 
-  useAnnouncements, 
+import {
+  useAnnouncements,
   useAnnouncementStats,
-  useCreateAnnouncement, 
-  useUpdateAnnouncement, 
+  useCreateAnnouncement,
+  useUpdateAnnouncement,
   useDeleteAnnouncement,
   useToggleAnnouncement,
   AnnouncementFormData,
-  Announcement 
+  Announcement,
+  AppRole,
 } from '@/hooks/useAnnouncements';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePagination } from '@/hooks/usePagination';
@@ -63,9 +64,6 @@ import { PaginationControls } from '@/components/ui/pagination-controls';
 import { useDebounce } from '@/hooks/useDebounce';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Database } from '@/integrations/supabase/types';
-
-type AppRole = Database['public']['Enums']['app_role'];
 
 const AVAILABLE_ROLES: { value: AppRole; label: string }[] = [
   { value: 'teacher', label: 'Teachers' },
