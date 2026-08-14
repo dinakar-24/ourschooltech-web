@@ -10,7 +10,7 @@ import { ForgotPasswordDialog } from '@/components/auth/ForgotPasswordDialog';
 import { api } from '@/lib/api';
 import { validateEmail, friendlyErrorMessage } from '@/lib/error-utils';
 
-type LoginStep = 'splash' | 'email' | 'password' | 'superadmin';
+type LoginStep = 'splash' | 'email' | 'school-select' | 'password' | 'superadmin';
 
 interface SchoolInfo {
   school_name: string;
@@ -65,6 +65,9 @@ export default function LoginPage() {
   const [lookupLoading, setLookupLoading] = useState(false);
   const [schoolInfo, setSchoolInfo] = useState<SchoolInfo | null>(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  // Only populated for the rare multi-school account -- everyone else never
+  // touches this state or sees the school-select step.
+  const [schoolOptions, setSchoolOptions] = useState<SchoolInfo[] | null>(null);
 
   const handleSplashComplete = useCallback(() => setStep('email'), []);
 
@@ -139,6 +142,12 @@ export default function LoginPage() {
         setStep('superadmin');
         return;
       }
+      if (result.multiple) {
+        setLookupLoading(false);
+        setSchoolOptions(result.schools);
+        setStep('school-select');
+        return;
+      }
       if (result.logo_url) {
         const img = new Image();
         img.src = result.logo_url;
@@ -158,7 +167,7 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
     try {
-      await login(email, password);
+      await login(email, password, schoolInfo?.school_id ?? undefined);
     } catch (err: any) {
       setError(friendlyErrorMessage(err.message));
     } finally {
@@ -166,9 +175,18 @@ export default function LoginPage() {
     }
   };
 
+  const handleSchoolSelect = (school: SchoolInfo) => {
+    if (school.logo_url) {
+      const img = new Image();
+      img.src = school.logo_url;
+    }
+    setSchoolInfo(school);
+    setStep('password');
+  };
+
   const handleBack = () => {
     if (step === 'password') {
-      setStep('email');
+      setStep(schoolOptions ? 'school-select' : 'email');
       setPassword('');
       setError('');
       setSchoolInfo(null);
@@ -221,6 +239,14 @@ export default function LoginPage() {
       <div className="flex-1 flex flex-col items-center px-5 py-4 relative z-10 overflow-auto">
         <div className="w-full max-w-sm flex-1 flex flex-col justify-center">
           {step === 'email' && <EmailStep key="email" email={email} setEmail={setEmail} error={error} loading={lookupLoading} onSubmit={handleEmailSubmit} />}
+          {step === 'school-select' && schoolOptions && (
+            <SchoolSelectStep
+              key="school-select"
+              schools={schoolOptions}
+              onSelect={handleSchoolSelect}
+              onBack={() => { setStep('email'); setSchoolOptions(null); setError(''); }}
+            />
+          )}
           {step === 'password' && schoolInfo && (
             <PasswordStep
               key="password"
@@ -233,7 +259,7 @@ export default function LoginPage() {
               loading={loading}
               schoolInfo={schoolInfo}
               onSubmit={handlePasswordSubmit}
-              onChangeEmail={() => { setStep('email'); setPassword(''); setError(''); setSchoolInfo(null); }}
+              onChangeEmail={() => { setStep(schoolOptions ? 'school-select' : 'email'); setPassword(''); setError(''); setSchoolInfo(null); }}
               onForgotPassword={() => setShowForgotPassword(true)}
             />
           )}
@@ -323,6 +349,54 @@ const EmailStep = React.forwardRef<HTMLDivElement, {
   );
 });
 EmailStep.displayName = 'EmailStep';
+
+/* ── School Select Step (only rendered for accounts linked to >1 school) ── */
+function SchoolSelectStep({ schools, onSelect, onBack }: {
+  schools: SchoolInfo[];
+  onSelect: (school: SchoolInfo) => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="flex flex-col login-fade-in">
+      <div className="text-center mb-6">
+        <h2 className="text-2xl font-bold text-white tracking-tight">Choose a school</h2>
+        <p className="text-white/35 text-sm mt-1.5">Your account is linked to more than one school</p>
+      </div>
+
+      <div className="bg-white/[0.04] backdrop-blur-2xl rounded-2xl p-2 border border-white/[0.06] shadow-2xl space-y-1.5 login-slide-up">
+        {schools.map((school) => (
+          <button
+            key={school.school_id}
+            type="button"
+            onClick={() => onSelect(school)}
+            className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.06] active:scale-[0.98] transition-all text-left"
+          >
+            <div className="w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-gradient-to-br from-white/[0.1] to-white/[0.04] flex items-center justify-center border border-white/[0.08]">
+              {school.logo_url ? (
+                <img src={school.logo_url} alt={school.school_name} className="w-full h-full object-contain" />
+              ) : (
+                <span className="text-lg font-bold text-white/60">{school.school_name?.charAt(0)}</span>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-medium text-sm truncate">{school.app_display_name || school.school_name}</p>
+              <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/[0.08] text-white/60 border border-white/[0.06]">
+                {roleIcons[school.role] || '👤'} {roleLabels[school.role] || school.role}
+              </span>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="text-center pt-4">
+        <button type="button" onClick={onBack}
+          className="text-white/25 hover:text-white/50 text-xs transition-colors">
+          Use a different email
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /* ── Password Step (CSS animations) ── */
 function PasswordStep({ email, password, setPassword, showPassword, setShowPassword, error, loading, schoolInfo, onSubmit, onChangeEmail, onForgotPassword }: {

@@ -57,7 +57,7 @@ interface AuthContextType {
   school: School | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, schoolId?: string) => Promise<void>;
   /**
    * Adopt a session obtained outside the password flow — currently the Super
    * Admin OTP login, whose verify step returns the same token payload as
@@ -251,10 +251,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSchool(selectedSchool);
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, schoolId?: string) => {
     setIsLoading(true);
     try {
-      const { data } = await api.post('/auth/login', { email, password });
+      const { data } = await api.post('/auth/login', { email, password, schoolId });
 
       useAuthStore.getState().setAuth({
         accessToken: data.accessToken,
