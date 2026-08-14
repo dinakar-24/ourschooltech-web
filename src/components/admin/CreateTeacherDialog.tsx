@@ -9,7 +9,7 @@ import {
 import {
   Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle,
 } from '@/components/ui/drawer';
-import { User, Mail, Lock, Hash, Loader2, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Hash, Loader2, Mails } from 'lucide-react';
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
 import { api } from '@/lib/api';
@@ -31,16 +31,8 @@ const subjectOptions = [
 ];
 
 const initialFormData = {
-  full_name: '', email: '', password: '', phone: '', employee_id: '', subject: '', avatar_url: '' as string | null,
+  full_name: '', email: '', phone: '', employee_id: '', subject: '', avatar_url: '' as string | null,
 };
-
-const passwordRules = [
-  { label: 'Min 8 chars', test: (p: string) => p.length >= 8 },
-  { label: 'Uppercase', test: (p: string) => /[A-Z]/.test(p) },
-  { label: 'Lowercase', test: (p: string) => /[a-z]/.test(p) },
-  { label: 'Number', test: (p: string) => /[0-9]/.test(p) },
-  { label: 'Special char', test: (p: string) => /[!@#$%^&*(),.?":{}|<>]/.test(p) },
-];
 
 function TeacherFormContent({ formData, onChange, onSubmit, isCreating, onClose }: {
   formData: typeof initialFormData;
@@ -49,8 +41,6 @@ function TeacherFormContent({ formData, onChange, onSubmit, isCreating, onClose 
   isCreating: boolean;
   onClose: () => void;
 }) {
-  const [showPassword, setShowPassword] = useState(false);
-
   return (
     <form onSubmit={onSubmit} className="space-y-4 px-4 sm:px-6 pb-6">
       {/* Avatar */}
@@ -76,36 +66,17 @@ function TeacherFormContent({ formData, onChange, onSubmit, isCreating, onClose 
         </div>
       </div>
 
-      {/* Email & Password */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label className="text-sm font-medium">Email <span className="text-destructive">*</span></Label>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input type="email" value={formData.email} onChange={(e) => onChange('email', e.target.value)} placeholder="teacher@school.edu" className="pl-10 h-11" required />
-          </div>
+      {/* Email */}
+      <div className="space-y-1.5">
+        <Label className="text-sm font-medium">Email <span className="text-destructive">*</span></Label>
+        <div className="relative">
+          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input type="email" value={formData.email} onChange={(e) => onChange('email', e.target.value)} placeholder="teacher@school.edu" className="pl-10 h-11" required />
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-sm font-medium">Password <span className="text-destructive">*</span></Label>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input type={showPassword ? 'text' : 'password'} value={formData.password} onChange={(e) => onChange('password', e.target.value)} placeholder="Min 8 characters" className="pl-10 pr-10 h-11" minLength={8} required />
-            <button type="button" onClick={() => setShowPassword(p => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer" tabIndex={-1}>
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
-          </div>
-          {formData.password ? (
-            <div className="flex flex-wrap gap-1.5">
-              {passwordRules.map(rule => (
-                <span key={rule.label} className={cn("text-xs px-2 py-0.5 rounded-full border", rule.test(formData.password) ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-muted/50 text-muted-foreground border-border")}>
-                  {rule.test(formData.password) ? '✓' : '○'} {rule.label}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Min 8 chars · uppercase · lowercase · number · special</p>
-          )}
-        </div>
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Mails className="w-3.5 h-3.5 shrink-0" />
+          A welcome email with a Set Password link will be sent to this address.
+        </p>
       </div>
 
       {/* Phone */}
@@ -167,25 +138,26 @@ export const CreateTeacherDialog = memo(function CreateTeacherDialog({ open, onO
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user?.schoolId) return;
-    const failedRule = passwordRules.find(r => !r.test(formData.password));
-    if (failedRule) { toast.error(`Password: ${failedRule.label} required`); return; }
 
     const [firstName, ...rest] = formData.full_name.trim().split(' ');
     const lastName = rest.join(' ') || firstName;
 
     setIsCreating(true);
     try {
-      await api.post('/school/teachers', {
+      const { data } = await api.post('/school/teachers', {
         firstName,
         lastName,
         email: formData.email,
-        password: formData.password,
         phone: formData.phone || undefined,
         employeeId: formData.employee_id || undefined,
         subjects: formData.subject ? [formData.subject] : undefined,
         photo: formData.avatar_url || undefined,
       });
-      toast.success('Teacher account created successfully');
+      toast.success(
+        data.welcomeEmailSent
+          ? 'Teacher account created — welcome email sent'
+          : 'Teacher account created, but the welcome email failed to send'
+      );
       onOpenChange(false);
       onSuccess();
     } catch (error: any) {

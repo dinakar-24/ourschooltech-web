@@ -11,14 +11,13 @@ import {
 import {
   Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle, DrawerTrigger,
 } from '@/components/ui/drawer';
-import { UserPlus, Building2, User, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { UserPlus, Building2, User, Mail, Mails } from 'lucide-react';
 import { IndianPhoneInput } from '@/components/ui/indian-phone-input';
 import { AvatarUpload } from '@/components/ui/avatar-upload';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { friendlyErrorMessage } from '@/lib/error-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { validatePassword } from '@/lib/password-validation';
 
 interface School {
   id: string;
@@ -32,14 +31,13 @@ interface CreateSchoolAdminDialogProps {
 }
 
 function AdminForm({ formData, update, handleSubmit, isCreating, schools, onClose }: {
-  formData: { email: string; password: string; fullName: string; schoolId: string; phone: string };
+  formData: { email: string; fullName: string; schoolId: string; phone: string };
   update: (field: string, value: string) => void;
   handleSubmit: (e: React.FormEvent) => void;
   isCreating: boolean;
   schools: School[];
   onClose: () => void;
 }) {
-  const [showPassword, setShowPassword] = useState(false);
   return (
     <form onSubmit={handleSubmit} className="space-y-4 px-4 sm:px-6 pb-6">
       {/* Avatar */}
@@ -83,6 +81,10 @@ function AdminForm({ formData, update, handleSubmit, isCreating, schools, onClos
               required
             />
           </div>
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <Mails className="w-3.5 h-3.5 shrink-0" />
+            A welcome email with a Set Password link will be sent here.
+          </p>
         </div>
 
         <div className="space-y-1.5">
@@ -96,37 +98,6 @@ function AdminForm({ formData, update, handleSubmit, isCreating, schools, onClos
             placeholder="Optional"
           />
         </div>
-      </div>
-
-      {/* Password */}
-      <div className="space-y-1.5">
-        <Label htmlFor="admin-password" className="text-sm font-medium">
-          Password <span className="text-destructive">*</span>
-        </Label>
-        <div className="relative">
-          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            id="admin-password"
-            type={showPassword ? 'text' : 'password'}
-            value={formData.password}
-            onChange={(e) => update('password', e.target.value)}
-            placeholder="Enter a strong password"
-            className="pl-10 pr-10 h-11"
-            minLength={8}
-            required
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword(prev => !prev)}
-            className="absolute right-3 top-1/2 -translate-y-1/2 z-10 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            tabIndex={-1}
-          >
-            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Min 8 chars · uppercase · lowercase · number · special character
-        </p>
       </div>
 
       {/* Assign to School */}
@@ -171,12 +142,12 @@ export function CreateSchoolAdminDialog({ schools, onSuccess }: CreateSchoolAdmi
   const [isOpen, setIsOpen] = useState(false);
   const isMobile = useIsMobile();
   const [formData, setFormData] = useState({
-    email: '', password: '', fullName: '', schoolId: '', phone: '',
+    email: '', fullName: '', schoolId: '', phone: '',
   });
 
   const [isCreating, setIsCreating] = useState(false);
 
-  const resetForm = () => setFormData({ email: '', password: '', fullName: '', schoolId: '', phone: '' });
+  const resetForm = () => setFormData({ email: '', fullName: '', schoolId: '', phone: '' });
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
@@ -186,23 +157,24 @@ export function CreateSchoolAdminDialog({ schools, onSuccess }: CreateSchoolAdmi
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.schoolId) { toast.error('Please select a school'); return; }
-    const passwordError = validatePassword(formData.password);
-    if (passwordError) { toast.error(passwordError); return; }
 
     const [firstName, ...rest] = formData.fullName.trim().split(' ');
     const lastName = rest.join(' ') || firstName;
 
     setIsCreating(true);
     try {
-      await api.post('/superadmin/school-admins', {
+      const { data } = await api.post('/superadmin/school-admins', {
         schoolId: formData.schoolId,
         firstName,
         lastName,
         email: formData.email,
         phone: formData.phone || undefined,
-        password: formData.password,
       });
-      toast.success('School admin account created successfully');
+      toast.success(
+        data.welcomeEmailSent
+          ? 'School admin account created — welcome email sent'
+          : 'School admin account created, but the welcome email failed to send'
+      );
       setIsOpen(false);
       resetForm();
       onSuccess();

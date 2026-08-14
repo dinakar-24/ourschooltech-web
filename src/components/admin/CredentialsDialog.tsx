@@ -1,15 +1,15 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Copy, Check, ShieldCheck } from 'lucide-react';
-import { useState } from 'react';
-import { toast } from 'sonner';
+import { Mail, MailWarning, ShieldCheck } from 'lucide-react';
 
 export interface CreatedAccount {
   role: string;
   email: string;
-  password: string;
   name: string;
+  // Undefined while the request is in flight in older callers; always set
+  // once the backend responds under the Set-Password flow.
+  welcomeEmailSent?: boolean;
 }
 
 interface CredentialsDialogProps {
@@ -19,24 +19,11 @@ interface CredentialsDialogProps {
   studentName: string;
 }
 
+// No password is ever shown here -- every admin-created account goes
+// through the Set-Password welcome-email flow now (see
+// onboarding.controller.js), so this just confirms who got emailed rather
+// than revealing a credential to copy/relay.
 export function CredentialsDialog({ open, onOpenChange, accounts, studentName }: CredentialsDialogProps) {
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-
-  const copyToClipboard = (text: string, index: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    toast.success('Copied to clipboard');
-    setTimeout(() => setCopiedIndex(null), 2000);
-  };
-
-  const copyAll = () => {
-    const text = accounts.map(a =>
-      `${a.role} Login:\nName: ${a.name}\nEmail: ${a.email}\nPassword: ${a.password}`
-    ).join('\n\n');
-    navigator.clipboard.writeText(text);
-    toast.success('All credentials copied');
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -46,46 +33,39 @@ export function CredentialsDialog({ open, onOpenChange, accounts, studentName }:
             Accounts Created
           </DialogTitle>
           <DialogDescription>
-            Login credentials for <strong>{studentName}</strong>. Share these with the respective users.
+            Login accounts for <strong>{studentName}</strong>. Each person gets a welcome email with a link to set their own password.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 mt-2">
+        <div className="space-y-3 mt-2">
           {accounts.map((account, index) => (
             <div key={index} className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
               <div className="flex items-center justify-between">
                 <Badge variant={account.role === 'Student' ? 'default' : 'secondary'}>
                   {account.role}
                 </Badge>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => copyToClipboard(
-                    `Email: ${account.email}\nPassword: ${account.password}`,
-                    index
-                  )}
-                >
-                  {copiedIndex === index ? (
-                    <Check className="w-4 h-4 text-success" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </Button>
+                {account.welcomeEmailSent === false ? (
+                  <span className="flex items-center gap-1.5 text-xs text-destructive">
+                    <MailWarning className="w-3.5 h-3.5" /> Email failed
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Mail className="w-3.5 h-3.5" /> Welcome email sent
+                  </span>
+                )}
               </div>
               <div className="space-y-1 text-sm">
                 <p><span className="text-muted-foreground">Name:</span> {account.name}</p>
                 <p><span className="text-muted-foreground">Email:</span> <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{account.email}</code></p>
-                <p><span className="text-muted-foreground">Password:</span> <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{account.password}</code></p>
               </div>
+              {account.welcomeEmailSent === false && (
+                <p className="text-xs text-destructive">Ask them to use "Forgot Password" on the login page instead.</p>
+              )}
             </div>
           ))}
         </div>
 
         <div className="flex gap-2 pt-2">
-          <Button variant="outline" className="flex-1" onClick={copyAll}>
-            <Copy className="w-4 h-4 mr-2" />
-            Copy All
-          </Button>
           <Button className="flex-1" onClick={() => onOpenChange(false)}>
             Done
           </Button>

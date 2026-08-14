@@ -192,13 +192,14 @@ export function useStudentStats() {
   });
 }
 
-// Created-account credentials returned once by POST /school/students when
+// Created-account summary returned by POST /school/students when
 // studentEmail/parentEmail create a login — matches CredentialsDialog.tsx's
-// CreatedAccount shape exactly (role/email/password/name), which is what
-// the old create-student-with-accounts Edge Function also returned.
+// CreatedAccount shape. No password: every admin-created account goes
+// through the Set-Password welcome-email flow now, so this only confirms
+// who was created and whether their welcome email actually sent.
 export interface CreateStudentResult {
   student: RawStudent;
-  createdAccounts: { role: string; email: string; password: string; name: string }[];
+  createdAccounts: { role: string; email: string; name: string; welcomeEmailSent?: boolean }[];
 }
 
 export function useCreateStudent() {
