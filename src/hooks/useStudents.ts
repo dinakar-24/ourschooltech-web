@@ -137,12 +137,19 @@ export function useStudents(filters?: {
     queryFn: async (): Promise<PaginatedStudents> => {
       if (!schoolId) throw new Error('No school ID');
 
+      // Defaults to active -- the backend shows active+inactive mixed
+      // together if this is omitted entirely, which used to mean archived
+      // students never actually disappeared from any list built on this
+      // hook. Pass status: 'all' explicitly to see everyone.
+      const status = filters?.status === 'all' ? undefined : filters?.status || 'active';
+
       const { data } = await api.get('/school/students', {
         params: {
           page,
           limit: pageSize,
           search: filters?.search || undefined,
           sectionId: filters?.sectionId || undefined,
+          status,
         },
       });
 

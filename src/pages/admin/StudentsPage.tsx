@@ -30,6 +30,7 @@ import {
   MoreVertical,
   Edit,
   Trash2,
+  Archive,
   Eye,
   Phone,
   Loader2,
@@ -44,7 +45,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useStudents, useStudentStats, useDeleteStudent, useCreateStudent, Student } from '@/hooks/useStudents';
 import { useCreateFee } from '@/hooks/useFees';
-import { invokeEdgeFunction } from '@/lib/api';
+import { api } from '@/lib/api';
 import { friendlyErrorMessage } from '@/lib/error-utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
@@ -79,12 +80,13 @@ export default function StudentsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClass, setSelectedClass] = useState('All Classes');
   const [selectedSection, setSelectedSection] = useState('All Sections');
+  const [selectedStatus, setSelectedStatus] = useState('active');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [createdAccounts, setCreatedAccounts] = useState<CreatedAccount[]>([]);
   const [credentialsStudentName, setCredentialsStudentName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [isDeletingAll, setIsDeletingAll] = useState(false);
-  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [isArchivingAll, setIsArchivingAll] = useState(false);
+  const [showArchiveAllConfirm, setShowArchiveAllConfirm] = useState(false);
   const pagination = usePagination(25);
   
   // Open add dialog from sidebar link
@@ -98,7 +100,7 @@ export default function StudentsPage() {
   // Reset to page 1 when filters change
   useEffect(() => {
     pagination.resetPage();
-  }, [searchQuery, selectedClass, selectedSection]);
+  }, [searchQuery, selectedClass, selectedSection, selectedStatus]);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -124,6 +126,7 @@ export default function StudentsPage() {
   const { data: result, isLoading: studentsLoading } = useStudents({
     className: selectedClass,
     section: selectedSection,
+    status: selectedStatus,
     search: searchQuery,
     page: pagination.page,
     pageSize: pagination.pageSize,
@@ -262,22 +265,19 @@ export default function StudentsPage() {
     setDeletingStudent(null);
   };
 
-  const handleDeleteAll = async () => {
+  const handleArchiveAll = async () => {
     if (!schoolId) return;
-    setIsDeletingAll(true);
+    setIsArchivingAll(true);
     try {
-      const result = await invokeEdgeFunction<{ deleted_count: number }>(
-        'delete-all-students',
-        { school_id: schoolId },
-      );
-      toast.success(`Deleted ${result.deleted_count} students`);
+      const { data } = await api.patch<{ archived_count: number }>('/school/students/archive-all');
+      toast.success(`Archived ${data.archived_count} students`);
       queryClient.invalidateQueries({ queryKey: ['students'] });
       queryClient.invalidateQueries({ queryKey: ['student-stats'] });
     } catch (err: any) {
-      toast.error(friendlyErrorMessage(err.message));
+      toast.error(friendlyErrorMessage(err?.response?.data?.error || 'Failed to archive students'));
     } finally {
-      setIsDeletingAll(false);
-      setShowDeleteAllConfirm(false);
+      setIsArchivingAll(false);
+      setShowArchiveAllConfirm(false);
     }
   };
 
@@ -359,6 +359,16 @@ export default function StudentsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <SelectTrigger className="w-[130px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Archived</SelectItem>
+                <SelectItem value="all">All</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex gap-2 flex-wrap">
             <Button variant="outline" size="sm">
@@ -369,10 +379,10 @@ export default function StudentsPage() {
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
-            {(stats?.total || 0) > 0 && (
-              <Button variant="destructive" size="sm" onClick={() => setShowDeleteAllConfirm(true)}>
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete All
+            {(stats?.active || 0) > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowArchiveAllConfirm(true)}>
+                <Archive className="w-4 h-4 mr-2" />
+                Archive All
               </Button>
             )}
             <AddStudentDialog
@@ -544,23 +554,22 @@ export default function StudentsPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        <AlertDialog open={showDeleteAllConfirm} onOpenChange={setShowDeleteAllConfirm}>
+        <AlertDialog open={showArchiveAllConfirm} onOpenChange={setShowArchiveAllConfirm}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete All Students</AlertDialogTitle>
+              <AlertDialogTitle>Archive All Students</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete <strong>ALL {stats?.total || 0} students</strong> from this school? This will permanently remove all student records, their auth accounts, attendance, fees, and results. <span className="text-destructive font-semibold">This action cannot be undone.</span>
+                Archive <strong>all {stats?.active || 0} active students</strong> in this school? They'll be removed from active lists and their own login will be disabled, but all fee invoices, payments, attendance, and results stay exactly as they are. A student can be found again via the Status filter above (set it to "Archived") and reactivated from their edit dialog at any time.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={isDeletingAll}>Cancel</AlertDialogCancel>
+              <AlertDialogCancel disabled={isArchivingAll}>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={handleDeleteAll}
-                disabled={isDeletingAll}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={handleArchiveAll}
+                disabled={isArchivingAll}
               >
-                {isDeletingAll ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                {isDeletingAll ? 'Deleting...' : 'Delete All Students'}
+                {isArchivingAll ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Archive className="w-4 h-4 mr-2" />}
+                {isArchivingAll ? 'Archiving...' : 'Archive All Students'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
