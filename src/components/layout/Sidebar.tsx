@@ -43,6 +43,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { toast } from 'sonner';
 import appLogo from '@/assets/logo.png';
 import { useMyAdminPermissions, PATH_TO_MODULE } from '@/hooks/useAdminPermissions';
+import { SwitchSchoolControl } from './SwitchSchoolControl';
 
 const LANGUAGES = [
   { code: 'en', label: 'English', short: 'EN' },
@@ -376,6 +377,8 @@ export function Sidebar({ userRole = 'school_admin', schoolName = 'Our School Te
 
       {/* Bottom Section */}
       <div className="border-t border-sidebar-border">
+        <SwitchSchoolControl isCollapsed={isCollapsed} />
+
         {/* Language Selector */}
         <Popover>
           <PopoverTrigger asChild>
