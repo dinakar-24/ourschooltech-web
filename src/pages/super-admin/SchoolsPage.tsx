@@ -11,6 +11,7 @@ import { useSchools, useCreateSchool, useUpdateSchool, useDeleteSchool, useToggl
 import { SchoolFormDialog } from '@/components/super-admin/schools/SchoolFormDialog';
 import { DeleteSchoolDialog } from '@/components/super-admin/schools/DeleteSchoolDialog';
 import { PwaSettingsDialog } from '@/components/super-admin/schools/PwaSettingsDialog';
+import { OnboardingSettingsDialog } from '@/components/super-admin/schools/OnboardingSettingsDialog';
 import { SchoolsTable } from '@/components/super-admin/schools/SchoolsTable';
 import { SchoolCard } from '@/components/super-admin/schools/SchoolCard';
 import { usePagination } from '@/hooks/usePagination';
@@ -51,6 +52,8 @@ export default function SchoolsPage() {
   const [togglingSchool, setTogglingSchool] = useState<School | null>(null);
   const [pwaSchool, setPwaSchool] = useState<any>(null);
   const [pwaDialogOpen, setPwaDialogOpen] = useState(false);
+  const [onboardingSchool, setOnboardingSchool] = useState<School | null>(null);
+  const [onboardingDialogOpen, setOnboardingDialogOpen] = useState(false);
 
   const handleOpenAddDialog = useCallback(() => {
     setEditingSchool(null);
@@ -123,6 +126,11 @@ export default function SchoolsPage() {
     } catch {
       toast.error('Failed to load PWA settings');
     }
+  }, []);
+
+  const handleOnboardingSettings = useCallback((school: School) => {
+    setOnboardingSchool(school);
+    setOnboardingDialogOpen(true);
   }, []);
 
   const [togglePassword, setTogglePassword] = useState('');
@@ -231,6 +239,7 @@ export default function SchoolsPage() {
                       onImpersonate={handleImpersonate}
                       onToggleStatus={handleToggleStatus}
                       onPwaSettings={handlePwaSettings}
+                      onOnboardingSettings={handleOnboardingSettings}
                       isToggling={toggleStatusMutation.isPending && togglingSchool?.id === school.id}
                     />
                   ))}
@@ -245,6 +254,7 @@ export default function SchoolsPage() {
                     onImpersonate={handleImpersonate}
                     onToggleStatus={handleToggleStatus}
                     onPwaSettings={handlePwaSettings}
+                    onOnboardingSettings={handleOnboardingSettings}
                     isTogglingId={toggleStatusMutation.isPending ? togglingSchool?.id || null : null}
                   />
                 </div>
@@ -278,6 +288,16 @@ export default function SchoolsPage() {
             if (!open) setPwaSchool(null);
           }}
           school={pwaSchool}
+        />
+
+        {/* Onboarding Settings Dialog */}
+        <OnboardingSettingsDialog
+          open={onboardingDialogOpen}
+          onOpenChange={(open) => {
+            setOnboardingDialogOpen(open);
+            if (!open) setOnboardingSchool(null);
+          }}
+          school={onboardingSchool}
         />
 
         {/* Delete Confirmation Dialog */}

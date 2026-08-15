@@ -38,6 +38,15 @@ export function ProtectedRoute({ children, allowedRoles, requireImpersonation }:
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // TEMP_PASSWORD onboarding mode's forced-first-login gate (Part D, Pass
+  // B) -- client-side redirect for UX, NOT the real enforcement (that's
+  // server-side in resolveTenant, which blocks every other API route
+  // regardless of what the UI does). This just stops every other page
+  // from rendering and immediately 403'ing on its first data fetch.
+  if (user?.mustChangePassword && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+
   if (allowedRoles && user) {
     const hasRole = allowedRoles.includes(user.role);
     

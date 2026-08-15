@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { friendlyErrorMessage } from '@/lib/error-utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { CredentialsDialog, type CreatedAccount } from '@/components/admin/CredentialsDialog';
 
 interface School {
   id: string;
@@ -146,6 +147,7 @@ export function CreateSchoolAdminDialog({ schools, onSuccess }: CreateSchoolAdmi
   });
 
   const [isCreating, setIsCreating] = useState(false);
+  const [credentials, setCredentials] = useState<CreatedAccount[]>([]);
 
   const resetForm = () => setFormData({ email: '', fullName: '', schoolId: '', phone: '' });
 
@@ -170,12 +172,18 @@ export function CreateSchoolAdminDialog({ schools, onSuccess }: CreateSchoolAdmi
         email: formData.email,
         phone: formData.phone || undefined,
       });
-      toast.success(
-        data.welcomeEmailSent
-          ? 'School admin account created — welcome email sent'
-          : 'School admin account created, but the welcome email failed to send'
-      );
       setIsOpen(false);
+      // TEMP_PASSWORD onboarding mode -- show the generated password once.
+      // Captured before resetForm() clears formData below.
+      if (data.temporaryPassword) {
+        setCredentials([{ role: 'School Admin', email: formData.email, name: formData.fullName, temporaryPassword: data.temporaryPassword }]);
+      } else {
+        toast.success(
+          data.welcomeEmailSent
+            ? 'School admin account created — welcome email sent'
+            : 'School admin account created, but the welcome email failed to send'
+        );
+      }
       resetForm();
       onSuccess();
     } catch (error: any) {
@@ -206,53 +214,68 @@ export function CreateSchoolAdminDialog({ schools, onSuccess }: CreateSchoolAdmi
     </div>
   );
 
+  const credentialsDialog = (
+    <CredentialsDialog
+      open={credentials.length > 0}
+      onOpenChange={(open) => { if (!open) setCredentials([]); }}
+      accounts={credentials}
+      studentName={credentials[0]?.name || ''}
+    />
+  );
+
   if (isMobile) {
     return (
-      <Drawer open={isOpen} onOpenChange={handleOpenChange}>
-        <DrawerTrigger asChild>
-          {triggerButton}
-        </DrawerTrigger>
-        <DrawerContent className="max-h-[90dvh]">
-          <DrawerHeader className="sr-only">
-            <DrawerTitle>Add School Admin</DrawerTitle>
-            <DrawerDescription>Create a new administrator account</DrawerDescription>
-          </DrawerHeader>
-          {headerContent}
-          <div data-vaul-no-drag className="overflow-y-auto">
-            <AdminForm
-              formData={formData}
-              update={update}
-              handleSubmit={handleSubmit}
-              isCreating={isCreating}
-              schools={schools}
-              onClose={() => setIsOpen(false)}
-            />
-          </div>
-        </DrawerContent>
-      </Drawer>
+      <>
+        <Drawer open={isOpen} onOpenChange={handleOpenChange}>
+          <DrawerTrigger asChild>
+            {triggerButton}
+          </DrawerTrigger>
+          <DrawerContent className="max-h-[90dvh]">
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Add School Admin</DrawerTitle>
+              <DrawerDescription>Create a new administrator account</DrawerDescription>
+            </DrawerHeader>
+            {headerContent}
+            <div data-vaul-no-drag className="overflow-y-auto">
+              <AdminForm
+                formData={formData}
+                update={update}
+                handleSubmit={handleSubmit}
+                isCreating={isCreating}
+                schools={schools}
+                onClose={() => setIsOpen(false)}
+              />
+            </div>
+          </DrawerContent>
+        </Drawer>
+        {credentialsDialog}
+      </>
     );
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        {triggerButton}
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto p-0">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Add School Admin</DialogTitle>
-          <DialogDescription>Create a new administrator account</DialogDescription>
-        </DialogHeader>
-        {headerContent}
-        <AdminForm
-          formData={formData}
-          update={update}
-          handleSubmit={handleSubmit}
-          isCreating={isCreating}
-          schools={schools}
-          onClose={() => setIsOpen(false)}
-        />
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+        <DialogTrigger asChild>
+          {triggerButton}
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Add School Admin</DialogTitle>
+            <DialogDescription>Create a new administrator account</DialogDescription>
+          </DialogHeader>
+          {headerContent}
+          <AdminForm
+            formData={formData}
+            update={update}
+            handleSubmit={handleSubmit}
+            isCreating={isCreating}
+            schools={schools}
+            onClose={() => setIsOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
+      {credentialsDialog}
+    </>
   );
 }

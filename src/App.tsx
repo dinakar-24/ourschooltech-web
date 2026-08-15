@@ -32,6 +32,7 @@ import SubdomainLanding from "./pages/login/SubdomainLanding";
 
 const ReceiptVerificationPage = lazy(() => import("./pages/ReceiptVerificationPage"));
 const SetPasswordPage = lazy(() => import("./pages/SetPasswordPage"));
+const ChangePasswordPage = lazy(() => import("./pages/ChangePasswordPage"));
 const PublicInstallPage = lazy(() => import("./pages/PublicInstallPage"));
 
 // Lazy loaded pages -- Super Admin
@@ -271,6 +272,7 @@ function AppRoutes() {
           <Route path="/receipt/:receiptNumber" element={<ReceiptVerificationPage />} />
           <Route path="/install" element={<PublicInstallPage />} />
           <Route path="/set-password" element={<SetPasswordPage />} />
+          <Route path="/change-password" element={<ProtectedRoute><ChangePasswordPage /></ProtectedRoute>} />
           
           <Route path="/login" element={isSubdomain ? <Navigate to="/" replace /> : <LoginPage />} />
 

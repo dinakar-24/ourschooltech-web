@@ -199,7 +199,7 @@ export function useStudentStats() {
 // who was created and whether their welcome email actually sent.
 export interface CreateStudentResult {
   student: RawStudent;
-  createdAccounts: { role: string; email: string; name: string; welcomeEmailSent?: boolean }[];
+  createdAccounts: { role: string; email: string; name: string; welcomeEmailSent?: boolean; temporaryPassword?: string }[];
 }
 
 export function useCreateStudent() {

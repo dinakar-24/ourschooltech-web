@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Building2, MapPin, Pencil, Trash2, Eye, ExternalLink, Copy, Users, Smartphone } from 'lucide-react';
+import { Building2, MapPin, Pencil, Trash2, Eye, ExternalLink, Copy, Users, Smartphone, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BASE_DOMAIN = 'ourschooltech.com';
@@ -38,16 +38,18 @@ interface SchoolsTableProps {
   onImpersonate?: (school: School) => void;
   onToggleStatus?: (school: School) => void;
   onPwaSettings?: (school: School) => void;
+  onOnboardingSettings?: (school: School) => void;
   isTogglingId?: string | null;
 }
 
-export const SchoolsTable = memo(function SchoolsTable({ 
-  schools, 
-  onEdit, 
+export const SchoolsTable = memo(function SchoolsTable({
+  schools,
+  onEdit,
   onDelete,
   onImpersonate,
   onToggleStatus,
   onPwaSettings,
+  onOnboardingSettings,
   isTogglingId,
 }: SchoolsTableProps) {
   const navigate = useNavigate();
@@ -153,6 +155,12 @@ export const SchoolsTable = memo(function SchoolsTable({
                       <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => onPwaSettings(school)} title="PWA Settings">
                         <Smartphone className="w-3.5 h-3.5 mr-1" />
                         PWA
+                      </Button>
+                    )}
+                    {onOnboardingSettings && (
+                      <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => onOnboardingSettings(school)} title="Onboarding Settings">
+                        <KeyRound className="w-3.5 h-3.5 mr-1" />
+                        Onboarding
                       </Button>
                     )}
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(school)}>

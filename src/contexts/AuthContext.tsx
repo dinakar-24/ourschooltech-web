@@ -50,6 +50,10 @@ export interface User {
   section?: string;
   employeeId?: string;
   subjects?: string[];
+  // Part D, Pass B -- TEMP_PASSWORD onboarding mode's forced-first-login
+  // flag. ProtectedRoute.tsx redirects to /change-password whenever this
+  // is true, for every role, regardless of which route was requested.
+  mustChangePassword: boolean;
 }
 
 interface AuthContextType {
@@ -93,6 +97,7 @@ interface RawAuthUser {
   name?: string | null;
   avatar?: string | null;
   phone?: string | null;
+  mustChangePassword?: boolean;
   school?: {
     id?: string;
     name: string;
@@ -133,6 +138,7 @@ function mapUser(raw: RawAuthUser, school: School | null): User {
     phone: raw.phone || undefined,
     schoolId: raw.schoolId ?? '',
     schoolName: school?.name ?? '',
+    mustChangePassword: Boolean(raw.mustChangePassword),
   };
 }
 

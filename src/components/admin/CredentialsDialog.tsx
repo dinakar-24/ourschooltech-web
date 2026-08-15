@@ -1,15 +1,24 @@
+import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Mail, MailWarning, ShieldCheck } from 'lucide-react';
+import { Copy, Check, Mail, MailWarning, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
 
 export interface CreatedAccount {
   role: string;
   email: string;
   name: string;
-  // Undefined while the request is in flight in older callers; always set
-  // once the backend responds under the Set-Password flow.
+  // Set under SET_PASSWORD onboarding mode (the default) -- undefined
+  // while the request is in flight, then true/false once the backend
+  // responds.
   welcomeEmailSent?: boolean;
+  // Set under TEMP_PASSWORD onboarding mode instead -- a real password,
+  // shown here exactly once, to hand over directly. Mutually exclusive
+  // with welcomeEmailSent in practice (a school is in one mode or the
+  // other), but both are optional on the type since the two modes share
+  // this one dialog.
+  temporaryPassword?: string;
 }
 
 interface CredentialsDialogProps {
@@ -19,11 +28,17 @@ interface CredentialsDialogProps {
   studentName: string;
 }
 
-// No password is ever shown here -- every admin-created account goes
-// through the Set-Password welcome-email flow now (see
-// onboarding.controller.js), so this just confirms who got emailed rather
-// than revealing a credential to copy/relay.
 export function CredentialsDialog({ open, onOpenChange, accounts, studentName }: CredentialsDialogProps) {
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const hasTempPasswords = accounts.some((a) => a.temporaryPassword);
+
+  const copyToClipboard = (text: string, index: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedIndex(index);
+    toast.success('Copied to clipboard');
+    setTimeout(() => setCopiedIndex(null), 2000);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -33,7 +48,11 @@ export function CredentialsDialog({ open, onOpenChange, accounts, studentName }:
             Accounts Created
           </DialogTitle>
           <DialogDescription>
-            Login accounts for <strong>{studentName}</strong>. Each person gets a welcome email with a link to set their own password.
+            {hasTempPasswords ? (
+              <>Login accounts for <strong>{studentName}</strong>. Share these passwords with the respective users — they won't be shown again.</>
+            ) : (
+              <>Login accounts for <strong>{studentName}</strong>. Each person gets a welcome email with a link to set their own password.</>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -44,7 +63,15 @@ export function CredentialsDialog({ open, onOpenChange, accounts, studentName }:
                 <Badge variant={account.role === 'Student' ? 'default' : 'secondary'}>
                   {account.role}
                 </Badge>
-                {account.welcomeEmailSent === false ? (
+                {account.temporaryPassword ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyToClipboard(`Email: ${account.email}\nPassword: ${account.temporaryPassword}`, index)}
+                  >
+                    {copiedIndex === index ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                ) : account.welcomeEmailSent === false ? (
                   <span className="flex items-center gap-1.5 text-xs text-destructive">
                     <MailWarning className="w-3.5 h-3.5" /> Email failed
                   </span>
@@ -57,6 +84,9 @@ export function CredentialsDialog({ open, onOpenChange, accounts, studentName }:
               <div className="space-y-1 text-sm">
                 <p><span className="text-muted-foreground">Name:</span> {account.name}</p>
                 <p><span className="text-muted-foreground">Email:</span> <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{account.email}</code></p>
+                {account.temporaryPassword && (
+                  <p><span className="text-muted-foreground">Password:</span> <code className="bg-muted px-1.5 py-0.5 rounded text-xs">{account.temporaryPassword}</code></p>
+                )}
               </div>
               {account.welcomeEmailSent === false && (
                 <p className="text-xs text-destructive">Ask them to use "Forgot Password" on the login page instead.</p>

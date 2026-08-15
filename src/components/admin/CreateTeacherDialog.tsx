@@ -17,6 +17,7 @@ import { friendlyErrorMessage } from '@/lib/error-utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
+import { CredentialsDialog, type CreatedAccount } from '@/components/admin/CredentialsDialog';
 
 interface CreateTeacherDialogProps {
   open: boolean;
@@ -130,6 +131,7 @@ function TeacherFormContent({ formData, onChange, onSubmit, isCreating, onClose 
 export const CreateTeacherDialog = memo(function CreateTeacherDialog({ open, onOpenChange, onSuccess }: CreateTeacherDialogProps) {
   const [formData, setFormData] = useState(initialFormData);
   const [isCreating, setIsCreating] = useState(false);
+  const [credentials, setCredentials] = useState<CreatedAccount[]>([]);
   const { user } = useAuth();
   const isMobile = useIsMobile();
 
@@ -153,12 +155,19 @@ export const CreateTeacherDialog = memo(function CreateTeacherDialog({ open, onO
         subjects: formData.subject ? [formData.subject] : undefined,
         photo: formData.avatar_url || undefined,
       });
-      toast.success(
-        data.welcomeEmailSent
-          ? 'Teacher account created — welcome email sent'
-          : 'Teacher account created, but the welcome email failed to send'
-      );
       onOpenChange(false);
+      // TEMP_PASSWORD onboarding mode -- show the generated password once,
+      // same dialog StudentsPage.tsx already uses for this. SET_PASSWORD
+      // mode (the default) just gets a toast, nothing to reveal.
+      if (data.temporaryPassword) {
+        setCredentials([{ role: 'Teacher', email: formData.email, name: formData.full_name, temporaryPassword: data.temporaryPassword }]);
+      } else {
+        toast.success(
+          data.welcomeEmailSent
+            ? 'Teacher account created — welcome email sent'
+            : 'Teacher account created, but the welcome email failed to send'
+        );
+      }
       onSuccess();
     } catch (error: any) {
       toast.error(friendlyErrorMessage(error?.response?.data?.error || 'Failed to create teacher'));
@@ -183,33 +192,48 @@ export const CreateTeacherDialog = memo(function CreateTeacherDialog({ open, onO
     </div>
   );
 
+  const credentialsDialog = (
+    <CredentialsDialog
+      open={credentials.length > 0}
+      onOpenChange={(open) => { if (!open) setCredentials([]); }}
+      accounts={credentials}
+      studentName={formData.full_name}
+    />
+  );
+
   if (isMobile) {
     return (
-      <Drawer open={open} onOpenChange={onOpenChange}>
-        <DrawerContent className="max-h-[90dvh]">
-          <DrawerHeader className="sr-only">
-            <DrawerTitle>Add New Teacher</DrawerTitle>
-            <DrawerDescription>Create a new teacher account</DrawerDescription>
-          </DrawerHeader>
-          {headerContent}
-          <div data-vaul-no-drag className="overflow-y-auto">
-            <TeacherFormContent formData={formData} onChange={handleFieldChange} onSubmit={handleSubmit} isCreating={isCreating} onClose={() => onOpenChange(false)} />
-          </div>
-        </DrawerContent>
-      </Drawer>
+      <>
+        <Drawer open={open} onOpenChange={onOpenChange}>
+          <DrawerContent className="max-h-[90dvh]">
+            <DrawerHeader className="sr-only">
+              <DrawerTitle>Add New Teacher</DrawerTitle>
+              <DrawerDescription>Create a new teacher account</DrawerDescription>
+            </DrawerHeader>
+            {headerContent}
+            <div data-vaul-no-drag className="overflow-y-auto">
+              <TeacherFormContent formData={formData} onChange={handleFieldChange} onSubmit={handleSubmit} isCreating={isCreating} onClose={() => onOpenChange(false)} />
+            </div>
+          </DrawerContent>
+        </Drawer>
+        {credentialsDialog}
+      </>
     );
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto p-0">
-        <DialogHeader className="sr-only">
-          <DialogTitle>Add New Teacher</DialogTitle>
-          <DialogDescription>Create a new teacher account</DialogDescription>
-        </DialogHeader>
-        {headerContent}
-        <TeacherFormContent formData={formData} onChange={handleFieldChange} onSubmit={handleSubmit} isCreating={isCreating} onClose={() => onOpenChange(false)} />
-      </DialogContent>
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg max-h-[90dvh] overflow-y-auto p-0">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Add New Teacher</DialogTitle>
+            <DialogDescription>Create a new teacher account</DialogDescription>
+          </DialogHeader>
+          {headerContent}
+          <TeacherFormContent formData={formData} onChange={handleFieldChange} onSubmit={handleSubmit} isCreating={isCreating} onClose={() => onOpenChange(false)} />
+        </DialogContent>
+      </Dialog>
+      {credentialsDialog}
+    </>
   );
 });

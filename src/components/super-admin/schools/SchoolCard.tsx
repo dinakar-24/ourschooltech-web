@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
-import { Building2, MapPin, Pencil, Trash2, Eye, ExternalLink, Copy, Users, Smartphone } from 'lucide-react';
+import { Building2, MapPin, Pencil, Trash2, Eye, ExternalLink, Copy, Users, Smartphone, KeyRound } from 'lucide-react';
 import { toast } from 'sonner';
 
 const BASE_DOMAIN = 'ourschooltech.com';
@@ -30,16 +30,18 @@ interface SchoolCardProps {
   onImpersonate?: (school: School) => void;
   onToggleStatus?: (school: School) => void;
   onPwaSettings?: (school: School) => void;
+  onOnboardingSettings?: (school: School) => void;
   isToggling?: boolean;
 }
 
-export const SchoolCard = memo(function SchoolCard({ 
-  school, 
-  onEdit, 
+export const SchoolCard = memo(function SchoolCard({
+  school,
+  onEdit,
   onDelete,
   onImpersonate,
   onToggleStatus,
   onPwaSettings,
+  onOnboardingSettings,
   isToggling,
 }: SchoolCardProps) {
   const navigate = useNavigate();
@@ -139,6 +141,11 @@ export const SchoolCard = memo(function SchoolCard({
           <Button variant="outline" size="sm" onClick={() => onPwaSettings(school)} className="flex-1 h-8 text-xs">
             <Smartphone className="w-3.5 h-3.5 mr-1" />
             PWA Settings
+          </Button>
+        )}
+        {onOnboardingSettings && (
+          <Button variant="outline" size="sm" onClick={() => onOnboardingSettings(school)} className="h-8 w-8 p-0 shrink-0" title="Onboarding Settings">
+            <KeyRound className="w-3.5 h-3.5" />
           </Button>
         )}
         <Button variant="outline" size="sm" onClick={() => onEdit(school)} className="h-8 w-8 p-0 shrink-0">
