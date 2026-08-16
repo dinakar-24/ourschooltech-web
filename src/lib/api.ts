@@ -48,8 +48,13 @@ async function refreshAccessToken(): Promise<string> {
     { headers: { 'Content-Type': 'application/json' } },
   );
 
+  // /auth/refresh now rotates the refresh token on every call (real
+  // rotation, not a 30-day-reusable one) — both tokens must be stored
+  // together, or the next refresh would present a refresh token the
+  // backend already deleted and get rejected.
   const accessToken = data.accessToken as string;
-  useAuthStore.getState().setAccessToken(accessToken);
+  const newRefreshToken = data.refreshToken as string;
+  useAuthStore.getState().setTokens(accessToken, newRefreshToken);
   return accessToken;
 }
 

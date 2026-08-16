@@ -37,8 +37,11 @@ interface AuthState {
 
   /** Called after a successful POST /auth/login. */
   setAuth: (payload: { accessToken: string; refreshToken: string; user: AuthUser }) => void;
-  /** Called after a successful POST /auth/refresh (access token only). */
-  setAccessToken: (accessToken: string) => void;
+  /** Called after a successful POST /auth/refresh -- refresh() now rotates
+   *  the refresh token on every call (real rotation, not a reusable
+   *  30-day token), so both must be replaced together, not just the
+   *  access token. */
+  setTokens: (accessToken: string, refreshToken: string) => void;
   clearAuth: () => void;
 }
 
@@ -60,7 +63,7 @@ export const useAuthStore = create<AuthState>()(
       setAuth: ({ accessToken, refreshToken, user }) =>
         set({ accessToken, refreshToken, user }),
 
-      setAccessToken: (accessToken) => set({ accessToken }),
+      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
 
       clearAuth: () => set({ accessToken: null, refreshToken: null, user: null }),
     }),
