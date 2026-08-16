@@ -17,6 +17,7 @@ import {
   FileText,
   CreditCard,
   Activity,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { GlobalSearchDialog } from '@/components/super-admin/GlobalSearchDialog';
@@ -116,6 +117,18 @@ export function SuperAdminLayout({ children, title }: SuperAdminLayoutProps) {
 
       {/* User Section */}
       <div className="p-3 border-t border-sidebar-border">
+        <Link
+          to="/security"
+          onClick={() => setMobileMenuOpen(false)}
+          className={cn(
+            "nav-item mb-2",
+            isCollapsed && "justify-center"
+          )}
+          title={isCollapsed ? 'Devices & Sessions' : undefined}
+        >
+          <ShieldCheck className="w-4 h-4 shrink-0" />
+          {!isCollapsed && <span className="text-sm">Devices & Sessions</span>}
+        </Link>
         <div className={cn(
           "flex items-center gap-3",
           isCollapsed && "justify-center"

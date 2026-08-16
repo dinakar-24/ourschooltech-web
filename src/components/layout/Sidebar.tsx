@@ -34,6 +34,7 @@ import {
   MessageSquare,
   HelpCircle,
   Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -378,6 +379,19 @@ export function Sidebar({ userRole = 'school_admin', schoolName = 'Our School Te
       {/* Bottom Section */}
       <div className="border-t border-sidebar-border">
         <SwitchSchoolControl isCollapsed={isCollapsed} />
+
+        {/* Devices & Sessions */}
+        <Link
+          to="/security"
+          className={cn(
+            "nav-item w-full mx-2 mt-1",
+            isCollapsed && "justify-center mx-auto"
+          )}
+          title={isCollapsed ? 'Devices & Sessions' : undefined}
+        >
+          <ShieldCheck className="w-5 h-5 shrink-0" />
+          {!isCollapsed && <span>Devices & Sessions</span>}
+        </Link>
 
         {/* Language Selector */}
         <Popover>
