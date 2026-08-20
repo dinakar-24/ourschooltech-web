@@ -23,6 +23,13 @@ export const ALL_ADMIN_MODULES = [
   'bulk-upload',
   'subscription',
   'settings',
+  // No sidebar page of its own -- the disable/enable/delete/reset-password
+  // actions live on Super Admin screens. It's listed here because the
+  // backend gates /api/manage-user on this key, and a SCHOOL_ADMIN can call
+  // that API directly whether or not their sidebar shows a button for it.
+  // Without a toggle here it would be enforced but invisible, revocable
+  // only by a save that happened to omit it.
+  'user-management',
 ] as const;
 
 export type AdminModule = typeof ALL_ADMIN_MODULES[number];
@@ -47,6 +54,7 @@ export const MODULE_LABELS: Record<AdminModule, string> = {
   'bulk-upload': 'Bulk Upload',
   'subscription': 'Subscription',
   'settings': 'Settings',
+  'user-management': 'User Management',
 };
 
 // Map sidebar paths to module keys
