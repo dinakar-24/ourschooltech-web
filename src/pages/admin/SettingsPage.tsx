@@ -16,6 +16,7 @@ import {
   Loader2,
   Globe,
   CreditCard,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
@@ -23,6 +24,8 @@ import { useEffectiveSchoolId } from '@/hooks/useEffectiveSchoolId';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { PaymentConfigSection } from '@/components/admin/PaymentConfigSection';
+import { Switch } from '@/components/ui/switch';
+import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -38,9 +41,33 @@ const LANGUAGES = [
 export default function SettingsPage() {
   const { school } = useAuth();
   const { t, i18n } = useTranslation();
+  // School Admin was the only role without this. The bell dropdown
+  // (NotificationCenter) offers `subscribe` but never `unsubscribe`, and the
+  // unsubscribe control lived only on the Parent/Teacher/Student settings
+  // pages -- so an admin who enabled push had no way anywhere in their
+  // portal to turn it back off.
+  const { isSubscribed, isSupported, subscribe, unsubscribe, permission } = usePushNotifications();
   const schoolId = useEffectiveSchoolId();
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('school');
+
+  const handleNotificationToggle = async (checked: boolean) => {
+    if (checked) {
+      if (!isSupported) {
+        toast.error(t('settingsPage.notificationsNotSupported'));
+        return;
+      }
+      const success = await subscribe();
+      if (success) {
+        toast.success(t('settingsPage.notificationsEnabled'));
+      } else if (permission === 'denied') {
+        toast.error(t('settingsPage.notificationsBlocked'));
+      }
+    } else {
+      const success = await unsubscribe();
+      if (success) toast.success(t('settingsPage.notificationsDisabled'));
+    }
+  };
 
   const handleLanguageChange = (val: string) => {
     i18n.changeLanguage(val);
@@ -55,6 +82,12 @@ export default function SettingsPage() {
   const [schoolCity, setSchoolCity] = useState(school?.city || '');
   const [schoolEmail, setSchoolEmail] = useState(school?.email || '');
   const [schoolPhone, setSchoolPhone] = useState(school?.phone || '');
+  // PATCH /school/info has always accepted these three; the form just never
+  // rendered them, so no school could set them. website in particular is
+  // what the branded email footer reads.
+  const [schoolState, setSchoolState] = useState(school?.state || '');
+  const [schoolPincode, setSchoolPincode] = useState(school?.pincode || '');
+  const [schoolWebsite, setSchoolWebsite] = useState(school?.website || '');
 
   const handleSaveSchoolInfo = async () => {
     if (!schoolId) return;
@@ -78,6 +111,9 @@ export default function SettingsPage() {
         city: schoolCity.trim(),
         email: schoolEmail.trim() || null,
         phone: schoolPhone.trim() || null,
+        state: schoolState.trim() || null,
+        pincode: schoolPincode.trim() || null,
+        website: schoolWebsite.trim() || null,
       });
       toast.success('School information updated successfully');
     } catch (err: any) {
@@ -90,6 +126,7 @@ export default function SettingsPage() {
   const TABS = [
     { value: 'school', label: 'School', icon: School },
     { value: 'payments', label: 'Payments', icon: CreditCard },
+    { value: 'notifications', label: 'Notifications', icon: Bell },
     { value: 'language', label: 'Language', icon: Globe },
   ];
 
@@ -116,7 +153,7 @@ export default function SettingsPage() {
           </div>
 
           {/* Desktop: Tab bar */}
-          <TabsList className="hidden sm:grid sm:grid-cols-3 sm:w-[400px]">
+          <TabsList className="hidden sm:grid sm:grid-cols-4 sm:w-[520px]">
             {TABS.map((tab) => (
               <TabsTrigger key={tab.value} value={tab.value}>{tab.label}</TabsTrigger>
             ))}
@@ -148,9 +185,19 @@ export default function SettingsPage() {
                     <Label className="text-xs font-medium">Address <span className="text-destructive">*</span></Label>
                     <Input value={schoolAddress} onChange={(e) => setSchoolAddress(e.target.value)} />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">City <span className="text-destructive">*</span></Label>
-                    <Input value={schoolCity} onChange={(e) => setSchoolCity(e.target.value)} />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">City <span className="text-destructive">*</span></Label>
+                      <Input value={schoolCity} onChange={(e) => setSchoolCity(e.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">State</Label>
+                      <Input value={schoolState} onChange={(e) => setSchoolState(e.target.value)} placeholder="Tamil Nadu" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">PIN Code</Label>
+                      <Input value={schoolPincode} onChange={(e) => setSchoolPincode(e.target.value)} placeholder="600001" />
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -161,6 +208,11 @@ export default function SettingsPage() {
                       <Label className="text-xs font-medium">Phone</Label>
                       <Input value={schoolPhone} onChange={(e) => setSchoolPhone(e.target.value)} placeholder="+91 XXXXX XXXXX" />
                     </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Website</Label>
+                    <Input value={schoolWebsite} onChange={(e) => setSchoolWebsite(e.target.value)} placeholder="https://www.yourschool.edu" />
+                    <p className="text-[11px] text-muted-foreground">Shown in the footer of emails sent to your parents and staff.</p>
                   </div>
                 </div>
                 <Button onClick={handleSaveSchoolInfo} disabled={saving} size="sm">
@@ -174,6 +226,43 @@ export default function SettingsPage() {
           {/* Payment Settings */}
           <TabsContent value="payments" className="space-y-5 mt-0">
             {schoolId && <PaymentConfigSection />}
+          </TabsContent>
+
+          {/* Notification Settings */}
+          <TabsContent value="notifications" className="space-y-5 mt-0">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Bell className="w-4 h-4" />
+                  Push Notifications
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  Get alerts on this device for fee reminders, exam results and school access changes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <p className="font-medium text-sm">Enable push notifications</p>
+                    <p className="text-xs text-muted-foreground">
+                      {!isSupported
+                        ? 'This browser does not support push notifications.'
+                        : permission === 'denied'
+                          ? 'Blocked in your browser settings — allow notifications for this site to turn them on.'
+                          : isSubscribed
+                            ? 'Currently enabled on this device.'
+                            : 'Currently disabled on this device.'}
+                    </p>
+                  </div>
+                  <Switch
+                    id="admin-push-notifications"
+                    checked={isSubscribed}
+                    onCheckedChange={handleNotificationToggle}
+                    disabled={!isSupported || permission === 'denied'}
+                  />
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Language Settings */}

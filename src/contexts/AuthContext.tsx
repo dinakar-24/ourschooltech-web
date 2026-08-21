@@ -34,6 +34,12 @@ export interface School {
   // just weren't threaded through mapSchool until now.
   primaryColor?: string;
   accentColor?: string;
+  // PATCH /school/info has always accepted these and GET /school/info has
+  // always returned them; they simply weren't carried through here, so the
+  // admin Settings form had nothing to prefill from and no way to save them.
+  state?: string;
+  pincode?: string;
+  website?: string;
 }
 
 export interface User {
@@ -110,6 +116,9 @@ interface RawAuthUser {
     city?: string | null;
     phone?: string | null;
     email?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    website?: string | null;
   } | null;
 }
 
@@ -125,6 +134,9 @@ function mapSchool(raw: RawAuthUser): School | null {
     city: raw.school.city ?? '',
     phone: raw.school.phone || undefined,
     email: raw.school.email || undefined,
+    state: raw.school.state || undefined,
+    pincode: raw.school.pincode || undefined,
+    website: raw.school.website || undefined,
   };
 }
 
